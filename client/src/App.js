@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import './App.css';
 import Chat from './Chat';
+import SERVER_URL from './config';
 
 function App() {
   const [screen, setScreen] = useState('login');
@@ -10,7 +11,7 @@ function App() {
   const [loggedInUser, setLoggedInUser] = useState('');
 
   const handleLogin = async () => {
-    const res = await fetch('process.env.REACT_APP_SERVER_URL/api/auth/login', {
+    const res = await fetch(`${SERVER_URL}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })
@@ -27,7 +28,7 @@ function App() {
   };
 
   const handleRegister = async () => {
-    const res = await fetch('process.env.REACT_APP_SERVER_URL/api/auth/register', {
+    const res = await fetch(`${SERVER_URL}/api/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password })

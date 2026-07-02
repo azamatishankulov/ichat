@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import SERVER_URL from './config';
 
 function Profile({ username, onClose, readOnly = false, onStatusChange }) {
   const formatLastSeen = (date) => {
@@ -29,7 +30,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
   const [stickerMsg, setStickerMsg] = useState('');
 
   useEffect(() => {
-    fetch(`process.env.REACT_APP_SERVER_URL/api/profile/${username}`)
+    fetch(`${SERVER_URL}/api/profile/${username}`)
       .then(res => res.json())
       .then(data => {
         setProfile(data);
@@ -41,7 +42,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
 
   useEffect(() => {
     if (activeTab === 'stickers' && !readOnly) {
-      fetch(`process.env.REACT_APP_SERVER_URL/api/stickers/${username}`)
+      fetch(`${SERVER_URL}/api/stickers/${username}`)
         .then(r => r.json())
         .then(data => setStickers(Array.isArray(data) ? data : []))
         .catch(() => {});
@@ -54,7 +55,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
     formData.append('sticker', file);
     formData.append('owner', username);
     const token = localStorage.getItem('token');
-    const res = await fetch('process.env.REACT_APP_SERVER_URL/api/stickers', {
+    const res = await fetch(`${SERVER_URL}/api/stickers`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData
@@ -72,7 +73,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
 
   const deleteSticker = async (id) => {
     const token = localStorage.getItem('token');
-    await fetch(`process.env.REACT_APP_SERVER_URL/api/stickers/${id}`, {
+    await fetch(`${SERVER_URL}/api/stickers/${id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ owner: username })
@@ -82,7 +83,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
 
   const saveProfile = async () => {
     const token = localStorage.getItem('token');
-    const res = await fetch(`process.env.REACT_APP_SERVER_URL/api/profile/${username}`, {
+    const res = await fetch(`${SERVER_URL}/api/profile/${username}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ displayName, bio, status })
@@ -96,7 +97,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
   const changePassword = async () => {
     if (!currentPassword || !newPassword) return;
     const token = localStorage.getItem('token');
-    const res = await fetch(`process.env.REACT_APP_SERVER_URL/api/profile/${username}/password`, {
+    const res = await fetch(`${SERVER_URL}/api/profile/${username}/password`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ currentPassword, newPassword })
@@ -113,7 +114,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
     const formData = new FormData();
     formData.append('avatar', file);
     const token = localStorage.getItem('token');
-    const res = await fetch(`process.env.REACT_APP_SERVER_URL/api/profile/${username}/avatar`, {
+    const res = await fetch(`${SERVER_URL}/api/profile/${username}/avatar`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData

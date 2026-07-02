@@ -1340,7 +1340,6 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const initials = username.slice(0, 2).toUpperCase();
   const currentMessages = activeDM ? (dmMessages[activeDM.dmId] || []) : messages;
 
   // The last message the current user sent in this DM that the other party has read

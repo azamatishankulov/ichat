@@ -1,0 +1,25 @@
+# Environment variables — NEVER commit these
+.env
+.env.local
+.env.production
+.env.*
+
+# Dependencies
+node_modules/
+client/node_modules/
+server/node_modules/
+
+# Uploaded files (user content, not source code)
+server/uploads/*
+!server/uploads/.gitkeep
+
+# Build output
+client/build/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db

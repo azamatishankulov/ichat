@@ -40,7 +40,14 @@ const io = new Server(server, {
   maxHttpBufferSize: 1e6
 });
 
-// Security headers — applied before anything else
+// CORS must come before Helmet so preflight OPTIONS responses are never
+// intercepted by security-header middleware before CORS headers are written.
+app.use(cors(corsOptions));
+// Explicit OPTIONS preflight handler — covers all routes, responds immediately
+// with CORS headers so the browser's preflight check always succeeds.
+app.options('*', cors(corsOptions));
+
+// Security headers
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -65,7 +72,6 @@ app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
 }));
 
-app.use(cors(corsOptions));
 app.use(express.json());
 // Sanitize req.body only — Express 5's req.query is a read-only getter and
 // cannot be reassigned, so middleware packages that do req.query = ... crash.

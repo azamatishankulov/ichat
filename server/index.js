@@ -28,7 +28,9 @@ const corsOptions = {
     callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE'],
-  credentials: true
+  credentials: true,
+  preflightContinue: false,
+  optionsSuccessStatus: 204
 };
 
 const server = http.createServer(app);
@@ -43,9 +45,6 @@ const io = new Server(server, {
 // CORS must come before Helmet so preflight OPTIONS responses are never
 // intercepted by security-header middleware before CORS headers are written.
 app.use(cors(corsOptions));
-// Explicit OPTIONS preflight handler — covers all routes, responds immediately
-// with CORS headers so the browser's preflight check always succeeds.
-app.options('/(.*)', cors(corsOptions));
 
 // Security headers
 app.use(helmet({

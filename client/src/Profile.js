@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 
 function Profile({ username, onClose, readOnly = false, onStatusChange }) {
   const formatLastSeen = (date) => {
@@ -29,7 +29,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
   const [stickerMsg, setStickerMsg] = useState('');
 
   useEffect(() => {
-    fetch(`http://localhost:5000/api/profile/${username}`)
+    fetch(`process.env.REACT_APP_SERVER_URL/api/profile/${username}`)
       .then(res => res.json())
       .then(data => {
         setProfile(data);
@@ -41,7 +41,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
 
   useEffect(() => {
     if (activeTab === 'stickers' && !readOnly) {
-      fetch(`http://localhost:5000/api/stickers/${username}`)
+      fetch(`process.env.REACT_APP_SERVER_URL/api/stickers/${username}`)
         .then(r => r.json())
         .then(data => setStickers(Array.isArray(data) ? data : []))
         .catch(() => {});
@@ -54,7 +54,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
     formData.append('sticker', file);
     formData.append('owner', username);
     const token = localStorage.getItem('token');
-    const res = await fetch('http://localhost:5000/api/stickers', {
+    const res = await fetch('process.env.REACT_APP_SERVER_URL/api/stickers', {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData
@@ -72,7 +72,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
 
   const deleteSticker = async (id) => {
     const token = localStorage.getItem('token');
-    await fetch(`http://localhost:5000/api/stickers/${id}`, {
+    await fetch(`process.env.REACT_APP_SERVER_URL/api/stickers/${id}`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ owner: username })
@@ -82,7 +82,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
 
   const saveProfile = async () => {
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:5000/api/profile/${username}`, {
+    const res = await fetch(`process.env.REACT_APP_SERVER_URL/api/profile/${username}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ displayName, bio, status })
@@ -96,7 +96,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
   const changePassword = async () => {
     if (!currentPassword || !newPassword) return;
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:5000/api/profile/${username}/password`, {
+    const res = await fetch(`process.env.REACT_APP_SERVER_URL/api/profile/${username}/password`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
       body: JSON.stringify({ currentPassword, newPassword })
@@ -113,7 +113,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
     const formData = new FormData();
     formData.append('avatar', file);
     const token = localStorage.getItem('token');
-    const res = await fetch(`http://localhost:5000/api/profile/${username}/avatar`, {
+    const res = await fetch(`process.env.REACT_APP_SERVER_URL/api/profile/${username}/avatar`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}` },
       body: formData
@@ -139,7 +139,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
       <div className="profile-modal" onClick={e => e.stopPropagation()}>
         <div className="profile-header">
           <h2>{readOnly ? `${username}'s Profile` : 'Profile'}</h2>
-          <button className="profile-close" onClick={onClose}>✕</button>
+          <button className="profile-close" onClick={onClose}>вњ•</button>
         </div>
 
         <div className="profile-tabs">
@@ -228,7 +228,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
               <label>Status</label>
               {readOnly ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-                  <span style={{ color: statusColors[status] }}>●</span>
+                  <span style={{ color: statusColors[status] }}>в—Џ</span>
                   <span style={{ color: '#1d1d1f', textTransform: 'capitalize' }}>{status}</span>
                 </div>
               ) : (
@@ -239,7 +239,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
                       className={`status-btn ${status === s ? 'active' : ''}`}
                       onClick={() => setStatus(s)}
                     >
-                      <span style={{ color: statusColors[s] }}>●</span> {s}
+                      <span style={{ color: statusColors[s] }}>в—Џ</span> {s}
                     </button>
                   ))}
                 </div>
@@ -313,7 +313,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
                         className="sticker-manage-delete"
                         onClick={() => deleteSticker(s._id)}
                         aria-label="Delete sticker"
-                      >✕</button>
+                      >вњ•</button>
                     </div>
                   ))}
                 </div>

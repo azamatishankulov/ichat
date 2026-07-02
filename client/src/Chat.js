@@ -3,7 +3,7 @@ import { io } from 'socket.io-client';
 import EmojiPicker from 'emoji-picker-react';
 import Profile from './Profile';
 
-const socket = io('http://localhost:5000');
+const socket = io(process.env.REACT_APP_SERVER_URL);
 const DEFAULT_ROOMS = ['general', 'random', 'tech'];
 
 function fmtDuration(secs) {
@@ -304,7 +304,7 @@ function Chat({ username, onLogout }) {
     socket.emit('join', username);
     requestNotificationPermission();
     loadStickers();
-    fetch('http://localhost:5000/api/profile')
+    fetch('process.env.REACT_APP_SERVER_URL/api/profile')
       .then(r => r.json())
       .then(data => {
         const users = Array.isArray(data) ? data : [];
@@ -645,7 +645,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
       const url = extractFirstUrl(msg.text);
       if (!url || fetchedUrlsRef.current.has(url)) return;
       fetchedUrlsRef.current.add(url);
-      fetch(`http://localhost:5000/api/link-preview?url=${encodeURIComponent(url)}`)
+      fetch(`process.env.REACT_APP_SERVER_URL/api/link-preview?url=${encodeURIComponent(url)}`)
         .then(r => r.json())
         .then(data => setLinkPreviews(prev => ({ ...prev, [url]: data })))
         .catch(() => setLinkPreviews(prev => ({ ...prev, [url]: null })));
@@ -770,7 +770,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     formData.append('image', file);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/upload/image', {
+      const res = await fetch('process.env.REACT_APP_SERVER_URL/api/upload/image', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -794,7 +794,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
   };
 
   const loadStickers = () => {
-    fetch(`http://localhost:5000/api/stickers/${username}`)
+    fetch(`process.env.REACT_APP_SERVER_URL/api/stickers/${username}`)
       .then(r => r.json())
       .then(data => setUserStickers(Array.isArray(data) ? data : []))
       .catch(() => {});
@@ -847,7 +847,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     formData.append('file', file);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/upload/file', {
+      const res = await fetch('process.env.REACT_APP_SERVER_URL/api/upload/file', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -886,7 +886,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     formData.append('file', blob, `voice_${Date.now()}.${ext}`);
     try {
       const token = localStorage.getItem('token');
-      const res = await fetch('http://localhost:5000/api/upload/file', {
+      const res = await fetch('process.env.REACT_APP_SERVER_URL/api/upload/file', {
         method: 'POST',
         headers: { Authorization: `Bearer ${token}` },
         body: formData

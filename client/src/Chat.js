@@ -975,6 +975,31 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  const saveImage = async (url) => {
+    try {
+      const res = await fetch(url);
+      const blob = await res.blob();
+      const fileName = url.split('/').pop() || 'ichat-image.jpg';
+      const file = new File([blob], fileName, { type: blob.type });
+
+      if (navigator.canShare && navigator.canShare({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        return;
+      }
+
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(blobUrl);
+    } catch (err) {
+      if (err.name !== 'AbortError') window.open(url, '_blank');
+    }
+  };
+
   const addReaction = (messageId, emoji) => {
     socket.emit('reaction', { messageId, emoji, username });
   };
@@ -2349,9 +2374,9 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
             )}
             <div className="lightbox-actions">
               {!lightboxViewOnce && (
-                <a href={lightboxImg} download target="_blank" rel="noreferrer">
+                <button className="lightbox-save-btn" onClick={() => saveImage(lightboxImg)}>
                   <i className="ti ti-download" aria-hidden="true"></i> Save image
-                </a>
+                </button>
               )}
               <button onClick={() => { setLightboxImg(''); setLightboxViewOnce(false); }}>
                 <i className="ti ti-x" aria-hidden="true"></i> Close

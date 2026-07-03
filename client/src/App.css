@@ -941,7 +941,7 @@ button.submit:hover { opacity: 0.85; }
   text-decoration: none;
 }
 
-.lightbox-actions a {
+.lightbox-actions .lightbox-save-btn {
   background: white;
   color: #1d1d1f;
   border: none;
@@ -953,7 +953,7 @@ button.submit:hover { opacity: 0.85; }
   border: 0.5px solid rgba(255,255,255,0.3);
 }
 
-.lightbox-actions a:hover { opacity: 0.85; }
+.lightbox-actions .lightbox-save-btn:hover { opacity: 0.85; }
 .lightbox-actions button:hover { background: rgba(255,255,255,0.25); }
 
 .reactions-row {

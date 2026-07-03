@@ -684,7 +684,6 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     setCurrentRoom(room);
     currentRoomRef.current = room;
     setActiveDM(null);
-    setMobileView('chat');
     activeDMRef.current = null;
     setDmTypingUser('');
     setShowPicker(false);
@@ -699,7 +698,6 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     if (toUser === username) return;
     const dmId = [username, toUser].sort().join('_');
     setActiveDM({ toUser, dmId });
-    setMobileView('chat');
     activeDMRef.current = { toUser, dmId };
     setDmTypingUser('');
     setShowPicker(false);
@@ -1423,7 +1421,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                   </div>
                 ) : (
                   <div className="room-item">
-                    <div className="room-item-left" onClick={() => joinRoom(room)}>
+                    <div className="room-item-left" onClick={() => { joinRoom(room); setMobileView('chat'); }}>
                       <span><span className="room-hash">#</span>{room}</span>
                       {unreadCounts[room] > 0 && (
                         <span className="unread-badge">{unreadCounts[room] > 99 ? '99+' : unreadCounts[room]}</span>
@@ -1494,7 +1492,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                   <div
                     key={u.username}
                     className="dm-search-result-item"
-                    onClick={() => { openDM(u.username); setDmSearchOpen(false); setDmSearchQuery(''); }}
+                    onClick={() => { openDM(u.username); setDmSearchOpen(false); setDmSearchQuery(''); setMobileView('chat'); }}
                   >
                     <Avatar username={u.username} avatarUrl={u.avatar || ''} size={28} />
                     <span>{u.displayName || u.username}</span>
@@ -1512,7 +1510,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                 <div
                   key={i}
                   className={`dm-card${activeDM?.toUser === u.username ? ' active-dm' : ''}`}
-                  onClick={() => openDM(u.username)}
+                  onClick={() => { openDM(u.username); setMobileView('chat'); }}
                 >
                   <div className="avatar-status-wrap">
                     <Avatar username={u.username} avatarUrl={u.avatar || ''} size={40} />

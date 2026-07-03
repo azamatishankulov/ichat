@@ -74,7 +74,7 @@ router.post('/image', requireAuth, imageUpload.single('image'), async (req, res)
     return res.status(400).json({ message: 'File content does not match a permitted image type' });
   }
 
-  const imageUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
   res.json({ imageUrl });
 });
 
@@ -95,7 +95,7 @@ router.post('/file', requireAuth, fileUpload.single('file'), async (req, res) =>
     return res.status(400).json({ message: 'File type not allowed' });
   }
 
-  const fileUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
   res.json({
     fileUrl,
     fileName: req.file.originalname,

@@ -48,7 +48,7 @@ router.put('/:username', requireAuth, async (req, res) => {
 // Update avatar
 router.post('/:username/avatar', requireAuth, upload.single('avatar'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
-  const avatarUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+  const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
   const user = await User.findOne({ username: req.params.username });
   if (!user) return res.status(404).json({ message: 'User not found' });
   user.avatar = avatarUrl;

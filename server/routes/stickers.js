@@ -27,7 +27,7 @@ router.post('/', requireAuth, upload.single('sticker'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
   const { owner } = req.body;
   if (!owner) return res.status(400).json({ message: 'owner required' });
-  const imageUrl = `http://localhost:5000/uploads/${req.file.filename}`;
+  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/${req.file.filename}`;
   const sticker = new Sticker({ owner, imageUrl });
   await sticker.save();
   res.json({ _id: sticker._id, imageUrl, owner, createdAt: sticker.createdAt });

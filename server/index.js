@@ -16,6 +16,9 @@ const cron = require('node-cron');
 require('dotenv').config();
 
 const app = express();
+// Railway sits behind a reverse proxy — trust its X-Forwarded-* headers so
+// req.protocol reports "https" instead of "http" for generated URLs.
+app.set('trust proxy', 1);
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
   .split(',')
@@ -54,8 +57,8 @@ app.use(helmet({
       scriptSrc: ["'self'", "https://cdn.jsdelivr.net"],
       styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://cdn.jsdelivr.net"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      imgSrc: ["'self'", "data:", "blob:", "http://localhost:5000"],
-      connectSrc: ["'self'", "http://localhost:5000", "ws://localhost:5000"],
+      imgSrc: ["'self'", "data:", "blob:", "http://localhost:5000", "https://ichat-production-e7e3.up.railway.app"],
+      connectSrc: ["'self'", "http://localhost:5000", "ws://localhost:5000", "https://ichat-production-e7e3.up.railway.app", "wss://ichat-production-e7e3.up.railway.app"],
       frameAncestors: ["'none'"],
       objectSrc: ["'none'"],
     }

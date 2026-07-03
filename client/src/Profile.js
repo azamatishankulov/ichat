@@ -140,7 +140,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
       <div className="profile-modal" onClick={e => e.stopPropagation()}>
         <div className="profile-header">
           <h2>{readOnly ? `${username}'s Profile` : 'Profile'}</h2>
-          <button className="profile-close" onClick={onClose}>вњ•</button>
+          <button className="profile-close" onClick={onClose}>✕</button>
         </div>
 
         <div className="profile-tabs">
@@ -229,7 +229,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
               <label>Status</label>
               {readOnly ? (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px' }}>
-                  <span style={{ color: statusColors[status] }}>в—Џ</span>
+                  <span style={{ color: statusColors[status] }}>●</span>
                   <span style={{ color: '#1d1d1f', textTransform: 'capitalize' }}>{status}</span>
                 </div>
               ) : (
@@ -240,7 +240,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
                       className={`status-btn ${status === s ? 'active' : ''}`}
                       onClick={() => setStatus(s)}
                     >
-                      <span style={{ color: statusColors[s] }}>в—Џ</span> {s}
+                      <span style={{ color: statusColors[s] }}>●</span> {s}
                     </button>
                   ))}
                 </div>
@@ -314,7 +314,7 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
                         className="sticker-manage-delete"
                         onClick={() => deleteSticker(s._id)}
                         aria-label="Delete sticker"
-                      >вњ•</button>
+                      >✕</button>
                     </div>
                   ))}
                 </div>

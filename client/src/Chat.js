@@ -281,6 +281,8 @@ function Chat({ username, onLogout }) {
   const [scheduleTime, setScheduleTime] = useState('');
   const [scheduledMsgs, setScheduledMsgs] = useState([]);
 
+  const [mobileView, setMobileView] = useState('sidebar');
+
   // Feature: WebRTC Calls
   const [incomingCall, setIncomingCall] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
@@ -682,6 +684,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     setCurrentRoom(room);
     currentRoomRef.current = room;
     setActiveDM(null);
+    setMobileView('chat');
     activeDMRef.current = null;
     setDmTypingUser('');
     setShowPicker(false);
@@ -696,6 +699,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     if (toUser === username) return;
     const dmId = [username, toUser].sort().join('_');
     setActiveDM({ toUser, dmId });
+    setMobileView('chat');
     activeDMRef.current = { toUser, dmId };
     setDmTypingUser('');
     setShowPicker(false);
@@ -1373,7 +1377,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
   const myStatus = userStatuses[username] || 'online';
 
   return (
-    <div className="chat-container">
+    <div className={`chat-container${mobileView === 'chat' ? ' mobile-chat-active' : ''}`}>
       <div className="chat-body">
 
         <div className="rooms-sidebar">
@@ -1623,6 +1627,13 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                 )}
               </div>
             )}
+            <button
+              className="mobile-back-btn"
+              onClick={() => setMobileView('sidebar')}
+              aria-label="Back to chats"
+            >
+              <i className="ti ti-chevron-left" aria-hidden="true" />
+            </button>
             <div>
               <div
   className="room-title-name"

@@ -3796,44 +3796,39 @@ body.dark .scheduled-item-text { color: #f5f5f7; }
     height: 100dvh;
     border-radius: 0;
     box-shadow: none;
+    overflow: hidden;
   }
 
   .chat-body {
-    position: relative;
-    overflow: hidden;
     width: 100%;
     height: 100%;
-    flex: 1;
+    margin: 0;
+    gap: 0;
   }
 
-  .chat-container { overflow: hidden; }
-
+  /* Only one panel is ever mounted-visible at a time on mobile — the other
+     gets display:none so it can't intercept touches or receive ghost clicks
+     while off-screen (the previous transform-based slide kept both panels
+     live in the layout, which was unreliable on iOS Safari). */
   .rooms-sidebar {
-    position: absolute;
-    inset: 0;
     width: 100%;
     min-width: 100%;
-    transform: translateX(0);
-    transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
-    z-index: 2;
     border-right: none;
+    border-radius: 0;
   }
 
   .messages-area {
-    position: absolute;
-    inset: 0;
+    display: none;
     width: 100%;
-    transform: translateX(100%);
-    transition: transform 0.28s cubic-bezier(0.4,0,0.2,1);
-    z-index: 2;
+    border-radius: 0;
   }
 
   .mobile-chat-active .rooms-sidebar {
-    transform: translateX(-100%);
+    display: none;
   }
 
   .mobile-chat-active .messages-area {
-    transform: translateX(0);
+    display: flex;
   }
 
   .mobile-back-btn {

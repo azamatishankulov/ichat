@@ -1202,6 +1202,24 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     localStorage.setItem('ichat-muted', next);
   };
 
+  const openSavedFromProfile = () => {
+    if (!showStarred) socket.emit('getStarredMessages');
+    setShowStarred(true);
+    setViewingProfile(null);
+  };
+
+  const openPinnedFromProfile = () => {
+    setShowPinned(true);
+    setViewingProfile(null);
+  };
+
+  const openSearchFromProfile = () => {
+    setShowSearch(true);
+    setSearchQuery('');
+    setSearchResults([]);
+    setViewingProfile(null);
+  };
+
   const forwardMessage = (msg, destination) => {
     const content = {
       text: msg.text || '',
@@ -1697,7 +1715,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
 )}
             </div>
             <div className="header-right">
-              {activeDM && (
+              {activeDM ? (
                 <>
                   <button
                     className="search-toggle-btn"
@@ -1716,46 +1734,42 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                     <i className="ti ti-video" aria-hidden="true" />
                   </button>
                 </>
+              ) : (
+                <>
+                  <button
+                    className="search-toggle-btn"
+                    onClick={() => {
+                      if (!showStarred) socket.emit('getStarredMessages');
+                      setShowStarred(s => !s);
+                    }}
+                    aria-label="Saved messages"
+                  >
+                    <i className="ti ti-star" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    className="search-toggle-btn"
+                    onClick={() => setShowPinned(!showPinned)}
+                    aria-label="Pinned messages"
+                  >
+                    <i className="ti ti-pin" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    className="search-toggle-btn"
+                    onClick={() => { setShowSearch(!showSearch); setSearchQuery(''); setSearchResults([]); }}
+                    aria-label="Search"
+                  >
+                    <i className="ti ti-search" aria-hidden="true"></i>
+                  </button>
+                  <button
+                    className="search-toggle-btn"
+                    onClick={toggleMute}
+                    aria-label={soundMuted ? 'Unmute notifications' : 'Mute notifications'}
+                    title={soundMuted ? 'Unmute sounds' : 'Mute sounds'}
+                  >
+                    <i className={`ti ${soundMuted ? 'ti-bell-off' : 'ti-bell'}`} aria-hidden="true"></i>
+                  </button>
+                </>
               )}
-              <button
-                className="search-toggle-btn"
-                onClick={() => {
-                  if (!showStarred) socket.emit('getStarredMessages');
-                  setShowStarred(s => !s);
-                }}
-                aria-label="Saved messages"
-              >
-                <i className="ti ti-star" aria-hidden="true"></i>
-              </button>
-              <button
-                className="search-toggle-btn"
-                onClick={() => setShowPinned(!showPinned)}
-                aria-label="Pinned messages"
-              >
-                <i className="ti ti-pin" aria-hidden="true"></i>
-              </button>
-              <button
-                className="search-toggle-btn"
-                onClick={() => setDarkMode(!darkMode)}
-                aria-label="Toggle dark mode"
-              >
-                <i className={`ti ${darkMode ? 'ti-sun' : 'ti-moon'}`} aria-hidden="true"></i>
-              </button>
-              <button
-                className="search-toggle-btn"
-                onClick={() => { setShowSearch(!showSearch); setSearchQuery(''); setSearchResults([]); }}
-                aria-label="Search"
-              >
-                <i className="ti ti-search" aria-hidden="true"></i>
-              </button>
-              <button
-                className="search-toggle-btn"
-                onClick={toggleMute}
-                aria-label={soundMuted ? 'Unmute notifications' : 'Mute notifications'}
-                title={soundMuted ? 'Unmute sounds' : 'Mute sounds'}
-              >
-                <i className={`ti ${soundMuted ? 'ti-bell-off' : 'ti-bell'}`} aria-hidden="true"></i>
-              </button>
               <button onClick={onLogout}>Sign out</button>
             </div>
           </div>
@@ -2351,6 +2365,8 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
             socket.emit('updateStatus', { username, status });
             setUserStatuses(prev => ({ ...prev, [username]: status }));
           }}
+          darkMode={darkMode}
+          onToggleDarkMode={() => setDarkMode(!darkMode)}
         />
       )}
 
@@ -2359,6 +2375,12 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
           username={viewingProfile}
           onClose={() => setViewingProfile(null)}
           readOnly={true}
+          showChatTools={!!activeDM && activeDM.toUser === viewingProfile}
+          soundMuted={soundMuted}
+          onOpenSaved={openSavedFromProfile}
+          onOpenPinned={openPinnedFromProfile}
+          onOpenSearch={openSearchFromProfile}
+          onToggleMute={toggleMute}
         />
       )}
 

@@ -1,7 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SERVER_URL from './config';
 
-function Profile({ username, onClose, readOnly = false, onStatusChange }) {
+function Profile({
+  username, onClose, readOnly = false, onStatusChange,
+  darkMode, onToggleDarkMode,
+  showChatTools = false, soundMuted, onOpenSaved, onOpenPinned, onOpenSearch, onToggleMute
+}) {
   const formatLastSeen = (date) => {
   const now = new Date();
   const lastSeen = new Date(date);
@@ -244,6 +248,37 @@ function Profile({ username, onClose, readOnly = false, onStatusChange }) {
                     </button>
                   ))}
                 </div>
+              )}
+
+              {!readOnly && (
+                <>
+                  <label>Appearance</label>
+                  <button className="profile-tool-btn" onClick={onToggleDarkMode}>
+                    <i className={`ti ${darkMode ? 'ti-sun' : 'ti-moon'}`} aria-hidden="true"></i>
+                    {darkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+                  </button>
+                </>
+              )}
+
+              {showChatTools && (
+                <>
+                  <label>Chat</label>
+                  <div className="profile-chat-tools">
+                    <button className="profile-tool-btn" onClick={onOpenSaved}>
+                      <i className="ti ti-star" aria-hidden="true"></i> Saved Messages
+                    </button>
+                    <button className="profile-tool-btn" onClick={onOpenPinned}>
+                      <i className="ti ti-pin" aria-hidden="true"></i> Pinned Messages
+                    </button>
+                    <button className="profile-tool-btn" onClick={onOpenSearch}>
+                      <i className="ti ti-search" aria-hidden="true"></i> Search Messages
+                    </button>
+                    <button className="profile-tool-btn" onClick={onToggleMute}>
+                      <i className={`ti ${soundMuted ? 'ti-bell-off' : 'ti-bell'}`} aria-hidden="true"></i>
+                      {soundMuted ? 'Unmute Notifications' : 'Mute Notifications'}
+                    </button>
+                  </div>
+                </>
               )}
 
               {message && <p className="profile-message">{message}</p>}

@@ -582,6 +582,10 @@ button.submit:hover { opacity: 0.85; }
   letter-spacing: -0.2px;
 }
 
+.dm-title-name {
+  font-size: 17px;
+}
+
 .room-title-sub {
   font-size: 11px;
   color: #b0b0b5;

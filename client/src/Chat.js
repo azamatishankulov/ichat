@@ -1677,20 +1677,18 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
             </button>
             <div>
               <div
-  className="room-title-name"
-  style={{ cursor: activeDM ? 'pointer' : 'default', display: activeDM ? 'flex' : undefined, alignItems: activeDM ? 'center' : undefined, gap: activeDM ? '8px' : undefined }}
+  className={activeDM ? 'room-title-name dm-title-name' : 'room-title-name'}
+  style={{ cursor: activeDM ? 'pointer' : 'default', display: activeDM ? 'flex' : undefined, alignItems: activeDM ? 'center' : undefined, gap: activeDM ? '10px' : undefined }}
   onClick={() => activeDM && setViewingProfile(activeDM.toUser)}
 >
   {activeDM ? (
     <>
-      <Avatar username={activeDM.toUser} avatarUrl={getUserAvatar(activeDM.toUser)} size={28} />
+      <Avatar username={activeDM.toUser} avatarUrl={getUserAvatar(activeDM.toUser)} size={40} />
       {allUsers.find(u => u.username === activeDM.toUser)?.displayName || activeDM.toUser}
     </>
   ) : `# ${currentRoom}`}
 </div>
-              {activeDM ? (
-  <div className="room-title-sub">Direct message</div>
-) : editingDescription ? (
+              {activeDM ? null : editingDescription ? (
   <div className="description-edit">
     <input
       type="text"

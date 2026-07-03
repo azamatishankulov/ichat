@@ -10,6 +10,13 @@ function App() {
   const [message, setMessage] = useState('');
   const [loggedInUser, setLoggedInUser] = useState('');
 
+  const extractMessage = (data) => {
+    if (data.errors && data.errors.length > 0) {
+      return data.errors.map(e => e.msg).join(' ');
+    }
+    return data.message || 'Something went wrong';
+  };
+
   const handleLogin = async () => {
     const res = await fetch(`${SERVER_URL}/api/auth/login`, {
       method: 'POST',
@@ -23,7 +30,7 @@ function App() {
       setLoggedInUser(username);
       setScreen('chat');
     } else {
-      setMessage(data.message || 'Login failed');
+      setMessage(extractMessage(data));
     }
   };
 
@@ -34,7 +41,7 @@ function App() {
       body: JSON.stringify({ username, password })
     });
     const data = await res.json();
-    setMessage(data.message);
+    setMessage(extractMessage(data));
   };
 
   const handleLogout = () => {

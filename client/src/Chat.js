@@ -6,6 +6,16 @@ import SERVER_URL from './config';
 
 const socket = io(SERVER_URL);
 const DEFAULT_ROOMS = ['general', 'random', 'tech'];
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+const MOD_KEY = IS_MAC ? '⌘' : 'Ctrl+';
+const SHORTCUT_LIST = [
+  { combo: `${MOD_KEY}K`, desc: 'Search messages' },
+  { combo: `${MOD_KEY}F`, desc: 'Search messages' },
+  { combo: `${MOD_KEY}/`, desc: 'Show keyboard shortcuts' },
+  { combo: 'Esc', desc: 'Close panel / cancel action' },
+  { combo: 'Alt + ↑ / ↓', desc: 'Navigate rooms' },
+  { combo: 'Alt + Shift + ↑ / ↓', desc: 'Navigate DMs' },
+];
 
 function fmtDuration(secs) {
   const s = Math.floor(secs || 0);
@@ -259,6 +269,8 @@ function Chat({ username, onLogout }) {
   const [mentionCandidates, setMentionCandidates] = useState([]);
   const [mentionIndex, setMentionIndex] = useState(0);
   const messageInputRef = useRef(null);
+  const searchInputRef = useRef(null);
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
 
   // Voice recording
   const [isRecording, setIsRecording] = useState(false);
@@ -1417,6 +1429,78 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     : (pinnedMessages[currentRoom] || []);
   const myStatus = userStatuses[username] || 'online';
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Modals with their own inputs (poll/schedule/forward) manage their
+      // own keyboard behavior — never intercept keys typed inside them.
+      if (e.target.closest && e.target.closest('.poll-create-modal, .schedule-modal, .forward-modal')) {
+        return;
+      }
+
+      const tag = e.target.tagName;
+      const isTyping = tag === 'INPUT' || tag === 'TEXTAREA' || e.target.isContentEditable;
+
+      if (e.key === 'Escape') {
+        if (lightboxImg) { setLightboxImg(''); setLightboxViewOnce(false); return; }
+        if (viewingProfile) { setViewingProfile(null); return; }
+        if (showProfile) { setShowProfile(false); return; }
+        if (showShortcutsHelp) { setShowShortcutsHelp(false); return; }
+        if (showPinned) { setShowPinned(false); return; }
+        if (showStarred) { setShowStarred(false); return; }
+        if (showSearch) { setShowSearch(false); setSearchQuery(''); setSearchResults([]); return; }
+        if (replyingTo) { setReplyingTo(null); return; }
+        if (editingMsg) { setEditingMsg(''); return; }
+        if (e.target === messageInputRef.current && message.trim()) { setMessage(''); return; }
+        return;
+      }
+
+      if (isTyping) return;
+
+      const mod = e.metaKey || e.ctrlKey;
+
+      if (mod && (e.key === 'k' || e.key === 'K' || e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        setShowSearch(true);
+        setTimeout(() => searchInputRef.current?.focus(), 0);
+        return;
+      }
+
+      if (mod && e.key === '/') {
+        e.preventDefault();
+        setShowShortcutsHelp(v => !v);
+        return;
+      }
+
+      if (e.altKey && !e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        if (rooms.length === 0) return;
+        const idx = rooms.indexOf(currentRoom);
+        const dir = e.key === 'ArrowUp' ? -1 : 1;
+        const nextIdx = (idx === -1 ? 0 : idx + dir + rooms.length) % rooms.length;
+        joinRoom(rooms[nextIdx]);
+        return;
+      }
+
+      if (e.altKey && e.shiftKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) {
+        e.preventDefault();
+        const dmUsers = allUsers.filter(u => u.username !== username);
+        if (dmUsers.length === 0) return;
+        const idx = dmUsers.findIndex(u => u.username === activeDM?.toUser);
+        const dir = e.key === 'ArrowUp' ? -1 : 1;
+        const nextIdx = (idx === -1 ? 0 : idx + dir + dmUsers.length) % dmUsers.length;
+        openDM(dmUsers[nextIdx].username);
+        return;
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    lightboxImg, viewingProfile, showProfile, showShortcutsHelp, showPinned, showStarred,
+    showSearch, replyingTo, editingMsg, message, rooms, currentRoom, allUsers, username, activeDM
+  ]);
+
   return (
     <div className={`chat-container${mobileView === 'chat' ? ' mobile-chat-active' : ''}`}>
       <div className="chat-body">
@@ -1768,6 +1852,14 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                   </button>
                 </>
               )}
+              <button
+                className="search-toggle-btn"
+                onClick={() => setShowShortcutsHelp(true)}
+                aria-label="Keyboard shortcuts"
+                title="Keyboard shortcuts (Ctrl+/)"
+              >
+                <i className="ti ti-keyboard" aria-hidden="true"></i>
+              </button>
               <button onClick={onLogout}>Sign out</button>
             </div>
           </div>
@@ -1776,6 +1868,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
             <div className="search-bar">
               <i className="ti ti-search" aria-hidden="true"></i>
               <input
+                ref={searchInputRef}
                 type="text"
                 placeholder="Search messages..."
                 value={searchQuery}
@@ -2380,6 +2473,25 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
           onOpenSearch={openSearchFromProfile}
           onToggleMute={toggleMute}
         />
+      )}
+
+      {showShortcutsHelp && (
+        <div className="profile-overlay" onClick={() => setShowShortcutsHelp(false)}>
+          <div className="shortcuts-modal" onClick={e => e.stopPropagation()}>
+            <div className="profile-header">
+              <h2>Keyboard Shortcuts</h2>
+              <button className="profile-close" onClick={() => setShowShortcutsHelp(false)}>✕</button>
+            </div>
+            <div className="shortcuts-list">
+              {SHORTCUT_LIST.map((s, i) => (
+                <div className="shortcut-row" key={i}>
+                  <span className="shortcut-key">{s.combo}</span>
+                  <span className="shortcut-desc">{s.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {lightboxImg && (

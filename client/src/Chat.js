@@ -307,6 +307,10 @@ function Chat({ username, onLogout }) {
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const callTimerRef = useRef(null);
+  const [callLogs, setCallLogs] = useState([]);
+
+  // Mobile bottom-tab navigation
+  const [searchDirQuery, setSearchDirQuery] = useState('');
 
   const statusColors = {
     online: '#34c759',
@@ -584,6 +588,9 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
         try { await pc.addIceCandidate(new RTCIceCandidate(candidate)); } catch {}
       }
     });
+    socket.on('callLogs', (logs) => {
+      setCallLogs(logs);
+    });
 
     return () => {
       socket.off('messagePinned');
@@ -625,6 +632,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
       socket.off('callEnded');
       socket.off('callFailed');
       socket.off('iceCandidate');
+      socket.off('callLogs');
     };
   }, [username]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1316,8 +1324,9 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     setCallCameraOff(false);
   };
 
-  const startCall = async (callType) => {
-    if (!activeDM) return;
+  const startCall = async (callType, targetUser) => {
+    const toUser = targetUser || activeDM?.toUser;
+    if (!toUser) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia(
         callType === 'video' ? { video: true, audio: true } : { video: false, audio: true }
@@ -1328,12 +1337,12 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
       stream.getTracks().forEach(track => pc.addTrack(track, stream));
       pc.ontrack = (e) => setRemoteStream(e.streams[0]);
       pc.onicecandidate = (e) => {
-        if (e.candidate) socket.emit('iceCandidate', { to: activeDM.toUser, candidate: e.candidate });
+        if (e.candidate) socket.emit('iceCandidate', { to: toUser, candidate: e.candidate });
       };
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
-      setActiveCall({ peerUsername: activeDM.toUser, callType });
-      socket.emit('callUser', { to: activeDM.toUser, from: username, signal: offer, callType });
+      setActiveCall({ peerUsername: toUser, callType });
+      socket.emit('callUser', { to: toUser, from: username, signal: offer, callType });
       callTimerRef.current = setInterval(() => setCallDuration(d => d + 1), 1000);
     } catch (err) {
       if (err.name === 'NotAllowedError' || err.name === 'PermissionDeniedError') {
@@ -1502,7 +1511,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
   ]);
 
   return (
-    <div className={`chat-container${mobileView === 'chat' ? ' mobile-chat-active' : ''}`}>
+    <div className={`chat-container${mobileView === 'chat' ? ' mobile-chat-active' : ''}`} data-mobile-view={mobileView}>
       <div className="chat-body">
 
         <div className="rooms-sidebar">
@@ -1678,6 +1687,160 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                 {user}
               </div>
             ))}
+          </div>
+        </div>
+
+        <div className="contacts-page">
+          <div className="mobile-page-header">
+            <h2>Contacts</h2>
+          </div>
+          <div className="contacts-list">
+            {allUsers.filter(u => u.username !== username).length === 0 ? (
+              <p className="mobile-page-empty">No contacts yet</p>
+            ) : (
+              allUsers.filter(u => u.username !== username).map((u, i) => {
+                const isOnline = onlineUsers.includes(u.username);
+                return (
+                  <div
+                    key={i}
+                    className="contact-row"
+                    onClick={() => { openDM(u.username); setMobileView('chat'); }}
+                  >
+                    <div className="avatar-status-wrap">
+                      <Avatar username={u.username} avatarUrl={u.avatar || ''} size={44} />
+                      <div className="status-dot-overlay" style={{ background: isOnline ? getStatusColor(u.username) : '#b0b0b5' }} />
+                    </div>
+                    <div className="contact-row-body">
+                      <span className="contact-row-name">{u.displayName || u.username}</span>
+                      <span className="contact-row-username">@{u.username}</span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="calls-page">
+          <div className="mobile-page-header">
+            <h2>Calls</h2>
+          </div>
+          <div className="calls-list">
+            {callLogs.length === 0 ? (
+              <p className="mobile-page-empty">No recent calls</p>
+            ) : (
+              callLogs.map((log) => {
+                const isOutgoing = log.caller === username;
+                const otherUser = isOutgoing ? log.callee : log.caller;
+                const isMissed = !isOutgoing && log.status !== 'answered';
+                const directionLabel = isOutgoing
+                  ? 'Outgoing'
+                  : log.status === 'declined'
+                  ? 'Declined'
+                  : log.status === 'missed'
+                  ? 'Missed'
+                  : 'Incoming';
+                return (
+                  <div
+                    key={log._id}
+                    className="call-row"
+                    onClick={() => { openDM(otherUser); setMobileView('chat'); }}
+                  >
+                    <Avatar username={otherUser} avatarUrl={getUserAvatar(otherUser)} size={44} />
+                    <div className="call-row-body">
+                      <span className={`call-row-name${isMissed ? ' call-row-missed' : ''}`}>
+                        {allUsers.find(u => u.username === otherUser)?.displayName || otherUser}
+                      </span>
+                      <span className="call-row-meta">
+                        <i className={`ti ${log.callType === 'video' ? 'ti-video' : 'ti-phone'}`} aria-hidden="true" />
+                        {directionLabel}{log.status === 'answered' ? ` · ${fmtCallDuration(log.duration)}` : ''}
+                      </span>
+                    </div>
+                    <div className="call-row-right">
+                      <span className="call-row-date">
+                        {new Date(log.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                      </span>
+                      <button
+                        className="call-row-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openDM(otherUser);
+                          setMobileView('chat');
+                          startCall(log.callType, otherUser);
+                        }}
+                        aria-label={`Call ${otherUser}`}
+                      >
+                        <i className={`ti ${log.callType === 'video' ? 'ti-video' : 'ti-phone'}`} aria-hidden="true" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        <div className="settings-page">
+          <Profile
+            username={username}
+            embedded={true}
+            onStatusChange={(status) => {
+              socket.emit('updateStatus', { username, status });
+              setUserStatuses(prev => ({ ...prev, [username]: status }));
+            }}
+            darkMode={darkMode}
+            onToggleDarkMode={() => setDarkMode(!darkMode)}
+            onLogout={onLogout}
+          />
+        </div>
+
+        <div className="search-page">
+          <div className="mobile-page-header">
+            <div className="search-page-input-wrap">
+              <i className="ti ti-search" aria-hidden="true" />
+              <input
+                type="text"
+                placeholder="Search rooms and contacts..."
+                value={searchDirQuery}
+                onChange={e => setSearchDirQuery(e.target.value)}
+                autoFocus
+              />
+            </div>
+          </div>
+          <div className="search-page-results">
+            <div className="section-label">Rooms</div>
+            {rooms.filter(r => r.toLowerCase().includes(searchDirQuery.toLowerCase())).map((room, i) => (
+              <div
+                key={i}
+                className="contact-row"
+                onClick={() => { joinRoom(room); setMobileView('chat'); }}
+              >
+                <div className="search-room-icon"><span className="room-hash">#</span></div>
+                <div className="contact-row-body">
+                  <span className="contact-row-name">{room}</span>
+                </div>
+              </div>
+            ))}
+            <div className="section-label">Contacts</div>
+            {allUsers
+              .filter(u => u.username !== username)
+              .filter(u =>
+                u.username.toLowerCase().includes(searchDirQuery.toLowerCase()) ||
+                (u.displayName || '').toLowerCase().includes(searchDirQuery.toLowerCase())
+              )
+              .map((u, i) => (
+                <div
+                  key={i}
+                  className="contact-row"
+                  onClick={() => { openDM(u.username); setMobileView('chat'); }}
+                >
+                  <Avatar username={u.username} avatarUrl={u.avatar || ''} size={44} />
+                  <div className="contact-row-body">
+                    <span className="contact-row-name">{u.displayName || u.username}</span>
+                    <span className="contact-row-username">@{u.username}</span>
+                  </div>
+                </div>
+              ))}
           </div>
         </div>
 
@@ -2446,6 +2609,44 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
           </div>
 
         </div>
+      </div>
+
+      <div className="mobile-tab-bar">
+        <button
+          className={`mobile-tab-btn${mobileView === 'sidebar' ? ' active' : ''}`}
+          onClick={() => setMobileView('sidebar')}
+        >
+          <i className="ti ti-message-circle-2" aria-hidden="true" />
+          <span>Chats</span>
+        </button>
+        <button
+          className={`mobile-tab-btn${mobileView === 'contacts' ? ' active' : ''}`}
+          onClick={() => setMobileView('contacts')}
+        >
+          <i className="ti ti-address-book" aria-hidden="true" />
+          <span>Contacts</span>
+        </button>
+        <button
+          className={`mobile-tab-btn${mobileView === 'calls' ? ' active' : ''}`}
+          onClick={() => { setMobileView('calls'); socket.emit('getCallLogs'); }}
+        >
+          <i className="ti ti-phone" aria-hidden="true" />
+          <span>Calls</span>
+        </button>
+        <button
+          className={`mobile-tab-btn${mobileView === 'search' ? ' active' : ''}`}
+          onClick={() => setMobileView('search')}
+        >
+          <i className="ti ti-search" aria-hidden="true" />
+          <span>Search</span>
+        </button>
+        <button
+          className={`mobile-tab-btn${mobileView === 'settings' ? ' active' : ''}`}
+          onClick={() => setMobileView('settings')}
+        >
+          <i className="ti ti-settings" aria-hidden="true" />
+          <span>Settings</span>
+        </button>
       </div>
 
       {showProfile && (

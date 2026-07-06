@@ -1651,6 +1651,27 @@ body.dark .shortcut-desc {
   color: #6e6e73;
 }
 
+.profile-signout-btn {
+  color: #ff3b30;
+  justify-content: center;
+  margin-top: 8px;
+}
+
+.profile-signout-btn i {
+  color: #ff3b30;
+}
+
+.profile-embedded {
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+  background: white;
+}
+
+.profile-embedded-inner {
+  width: 100%;
+}
+
 .profile-message {
   font-size: 13px;
   color: #34c759;
@@ -3885,8 +3906,13 @@ body.dark .scheduled-item-text { color: #f5f5f7; }
   border-radius: 20px;
 }
 
-/* ── Mobile layout (WhatsApp-style panel switching) ── */
-.mobile-back-btn {
+/* ── Mobile layout (Telegram-style bottom tab navigation) ── */
+.mobile-back-btn,
+.contacts-page,
+.calls-page,
+.settings-page,
+.search-page,
+.mobile-tab-bar {
   display: none;
 }
 
@@ -3904,20 +3930,24 @@ body.dark .scheduled-item-text { color: #f5f5f7; }
 
   .chat-body {
     width: 100%;
-    height: 100%;
     margin: 0;
     gap: 0;
   }
 
-  /* Only one panel is ever mounted-visible at a time on mobile — the other
-     gets display:none so it can't intercept touches or receive ghost clicks
-     while off-screen (the previous transform-based slide kept both panels
-     live in the layout, which was unreliable on iOS Safari). */
-  .rooms-sidebar {
+  /* Only one page is ever mounted-visible at a time on mobile — the rest
+     get display:none so they can't intercept touches or receive ghost clicks
+     while off-screen (a previous transform-based slide kept panels live in
+     the layout simultaneously, which was unreliable on iOS Safari). */
+  .rooms-sidebar,
+  .contacts-page,
+  .calls-page,
+  .settings-page,
+  .search-page {
     width: 100%;
     min-width: 100%;
     border-right: none;
     border-radius: 0;
+    display: none;
   }
 
   .messages-area {
@@ -3926,13 +3956,12 @@ body.dark .scheduled-item-text { color: #f5f5f7; }
     border-radius: 0;
   }
 
-  .mobile-chat-active .rooms-sidebar {
-    display: none;
-  }
-
-  .mobile-chat-active .messages-area {
-    display: flex;
-  }
+  [data-mobile-view="sidebar"] .rooms-sidebar { display: flex; }
+  [data-mobile-view="contacts"] .contacts-page { display: flex; }
+  [data-mobile-view="calls"] .calls-page { display: flex; }
+  [data-mobile-view="settings"] .settings-page { display: flex; }
+  [data-mobile-view="search"] .search-page { display: flex; }
+  [data-mobile-view="chat"] .messages-area { display: flex; }
 
   .mobile-back-btn {
     display: flex;
@@ -3954,4 +3983,240 @@ body.dark .scheduled-item-text { color: #f5f5f7; }
   .chat-header { flex-wrap: nowrap; }
 
   .messages-area .chat-input-area { padding-bottom: env(safe-area-inset-bottom, 8px); }
+
+  /* Bottom tab bar */
+  .mobile-tab-bar {
+    display: flex;
+    flex-shrink: 0;
+    background: white;
+    border-top: 0.5px solid rgba(0,0,0,0.08);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom, 0px));
+  }
+
+  [data-mobile-view="chat"] .mobile-tab-bar {
+    display: none;
+  }
+
+  .mobile-tab-btn {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    color: #8e8e93;
+    padding: 4px 0;
+    font-family: 'Inter', sans-serif;
+  }
+
+  .mobile-tab-btn i {
+    font-size: 22px;
+  }
+
+  .mobile-tab-btn span {
+    font-size: 10px;
+  }
+
+  .mobile-tab-btn.active {
+    color: #007aff;
+  }
+
+  body.dark .mobile-tab-bar {
+    background: #111;
+    border-color: #2a2a2a;
+  }
+
+  body.dark .mobile-tab-btn {
+    color: #7d7d80;
+  }
+
+  body.dark .mobile-tab-btn.active {
+    color: #0a84ff;
+  }
+
+  /* Mobile page header (Contacts / Calls / Search) */
+  .mobile-page-header {
+    padding: 16px 20px 12px;
+    border-bottom: 0.5px solid rgba(0,0,0,0.06);
+    flex-shrink: 0;
+  }
+
+  .mobile-page-header h2 {
+    font-size: 22px;
+    font-weight: 700;
+    color: #1d1d1f;
+  }
+
+  body.dark .mobile-page-header {
+    border-color: #2a2a2a;
+  }
+
+  body.dark .mobile-page-header h2 {
+    color: white;
+  }
+
+  .search-page-input-wrap {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #f2f2f7;
+    border-radius: 10px;
+    padding: 8px 12px;
+  }
+
+  .search-page-input-wrap i {
+    color: #8e8e93;
+    font-size: 15px;
+  }
+
+  .search-page-input-wrap input {
+    flex: 1;
+    border: none;
+    background: none;
+    outline: none;
+    font-size: 14px;
+    font-family: 'Inter', sans-serif;
+    color: #1d1d1f;
+  }
+
+  body.dark .search-page-input-wrap {
+    background: #1c1c1e;
+  }
+
+  body.dark .search-page-input-wrap input {
+    color: white;
+  }
+
+  .contacts-list,
+  .calls-list,
+  .search-page-results {
+    flex: 1;
+    overflow-y: auto;
+  }
+
+  .mobile-page-empty {
+    text-align: center;
+    color: #8e8e93;
+    font-size: 13px;
+    padding: 40px 20px;
+  }
+
+  .contact-row,
+  .call-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 20px;
+    cursor: pointer;
+    border-bottom: 0.5px solid rgba(0,0,0,0.05);
+  }
+
+  .contact-row:active,
+  .call-row:active {
+    background: #f5f5f7;
+  }
+
+  body.dark .contact-row,
+  body.dark .call-row {
+    border-color: #1e1e1e;
+  }
+
+  body.dark .contact-row:active,
+  body.dark .call-row:active {
+    background: #1c1c1e;
+  }
+
+  .contact-row-body,
+  .call-row-body {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+  }
+
+  .contact-row-name,
+  .call-row-name {
+    font-size: 15px;
+    font-weight: 500;
+    color: #1d1d1f;
+  }
+
+  body.dark .contact-row-name,
+  body.dark .call-row-name {
+    color: white;
+  }
+
+  .contact-row-username {
+    font-size: 12px;
+    color: #8e8e93;
+  }
+
+  .call-row-name.call-row-missed {
+    color: #ff3b30;
+  }
+
+  .call-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    color: #8e8e93;
+  }
+
+  .call-row-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+
+  .call-row-date {
+    font-size: 11px;
+    color: #b0b0b5;
+  }
+
+  .call-row-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    border: none;
+    background: #f2f2f7;
+    color: #007aff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+
+  body.dark .call-row-btn {
+    background: #1c1c1e;
+    color: #0a84ff;
+  }
+
+  .search-room-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: #f2f2f7;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: 600;
+    color: #6e6e73;
+    flex-shrink: 0;
+  }
+
+  body.dark .search-room-icon {
+    background: #1c1c1e;
+    color: #98989d;
+  }
+
+  .search-page-results .section-label {
+    padding: 12px 20px 6px;
+  }
 }

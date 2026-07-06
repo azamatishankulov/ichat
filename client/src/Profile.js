@@ -4,7 +4,8 @@ import SERVER_URL from './config';
 function Profile({
   username, onClose, readOnly = false, onStatusChange,
   darkMode, onToggleDarkMode,
-  showChatTools = false, soundMuted, onOpenSaved, onOpenPinned, onOpenSearch, onToggleMute
+  showChatTools = false, soundMuted, onOpenSaved, onOpenPinned, onOpenSearch, onToggleMute,
+  embedded = false, onLogout
 }) {
   const formatLastSeen = (date) => {
   const now = new Date();
@@ -140,11 +141,11 @@ function Profile({
   };
 
   return (
-    <div className="profile-overlay" onClick={onClose}>
-      <div className="profile-modal" onClick={e => e.stopPropagation()}>
+    <div className={embedded ? 'profile-embedded' : 'profile-overlay'} onClick={embedded ? undefined : onClose}>
+      <div className={embedded ? 'profile-embedded-inner' : 'profile-modal'} onClick={embedded ? undefined : (e => e.stopPropagation())}>
         <div className="profile-header">
-          <h2>{readOnly ? `${username}'s Profile` : 'Profile'}</h2>
-          <button className="profile-close" onClick={onClose}>✕</button>
+          <h2>{embedded ? 'Settings' : readOnly ? `${username}'s Profile` : 'Profile'}</h2>
+          {!embedded && <button className="profile-close" onClick={onClose}>✕</button>}
         </div>
 
         <div className="profile-tabs">
@@ -285,6 +286,11 @@ function Profile({
               {!readOnly && (
                 <button className="profile-save-btn" onClick={saveProfile}>
                   Save Changes
+                </button>
+              )}
+              {embedded && (
+                <button className="profile-tool-btn profile-signout-btn" onClick={onLogout}>
+                  <i className="ti ti-logout" aria-hidden="true"></i> Sign Out
                 </button>
               )}
             </div>

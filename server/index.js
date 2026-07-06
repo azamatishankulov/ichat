@@ -12,6 +12,7 @@ const Message = require('./models/Message');
 const User = require('./models/User');
 const Poll = require('./models/Poll');
 const ScheduledMessage = require('./models/ScheduledMessage');
+const CallLog = require('./models/CallLog');
 const cron = require('node-cron');
 require('dotenv').config();
 
@@ -190,6 +191,10 @@ const roomDescriptions = {
   tech: 'Tech talk and discussions'
 };
 const userSockets = new Map();
+// Tracks the in-progress CallLog document for each active call, keyed by the
+// sorted pair of usernames — lets answerCall/rejectCall/endCall update the
+// same log entry created when the call was initiated.
+const activeCallLogs = new Map();
 
 async function extractMentions(text) {
   if (!text) return [];
@@ -735,28 +740,62 @@ io.on('connection', (socket) => {
   });
 
   // ---- WebRTC Signaling ----
-  socket.on('callUser', ({ to, from, signal, callType }) => {
+  socket.on('callUser', async ({ to, from, signal, callType }) => {
     const targetSocket = userSockets.get(to);
     if (!targetSocket) {
       socket.emit('callFailed', { message: `${to} is not online.` });
       return;
     }
+    const key = [from, to].sort().join('_');
+    try {
+      const log = await CallLog.create({ caller: from, callee: to, callType, status: 'missed', duration: 0 });
+      activeCallLogs.set(key, { logId: log._id, startedAt: null });
+    } catch (err) {}
     targetSocket.emit('incomingCall', { from, signal, callType });
   });
 
-  socket.on('answerCall', ({ to, signal }) => {
+  socket.on('answerCall', async ({ to, signal }) => {
     const targetSocket = userSockets.get(to);
     if (targetSocket) targetSocket.emit('callAccepted', { signal });
+    const key = [socket.username, to].sort().join('_');
+    const entry = activeCallLogs.get(key);
+    if (entry) {
+      entry.startedAt = new Date();
+      CallLog.findByIdAndUpdate(entry.logId, { status: 'answered' }).catch(() => {});
+    }
   });
 
-  socket.on('rejectCall', ({ to }) => {
+  socket.on('rejectCall', async ({ to }) => {
     const targetSocket = userSockets.get(to);
     if (targetSocket) targetSocket.emit('callRejected');
+    const key = [socket.username, to].sort().join('_');
+    const entry = activeCallLogs.get(key);
+    if (entry) {
+      await CallLog.findByIdAndUpdate(entry.logId, { status: 'declined' }).catch(() => {});
+      activeCallLogs.delete(key);
+    }
   });
 
-  socket.on('endCall', ({ to }) => {
+  socket.on('endCall', async ({ to }) => {
     const targetSocket = userSockets.get(to);
     if (targetSocket) targetSocket.emit('callEnded');
+    const key = [socket.username, to].sort().join('_');
+    const entry = activeCallLogs.get(key);
+    if (entry) {
+      if (entry.startedAt) {
+        const duration = Math.round((Date.now() - entry.startedAt.getTime()) / 1000);
+        await CallLog.findByIdAndUpdate(entry.logId, { duration }).catch(() => {});
+      }
+      activeCallLogs.delete(key);
+    }
+  });
+
+  socket.on('getCallLogs', async () => {
+    if (!socket.username) return;
+    const logs = await CallLog.find({
+      $or: [{ caller: socket.username }, { callee: socket.username }]
+    }).sort({ createdAt: -1 }).limit(100);
+    socket.emit('callLogs', logs);
   });
 
   socket.on('iceCandidate', ({ to, candidate }) => {

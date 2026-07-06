@@ -793,9 +793,27 @@ io.on('connection', (socket) => {
   socket.on('getCallLogs', async () => {
     if (!socket.username) return;
     const logs = await CallLog.find({
-      $or: [{ caller: socket.username }, { callee: socket.username }]
+      $or: [{ caller: socket.username }, { callee: socket.username }],
+      hiddenFor: { $ne: socket.username }
     }).sort({ createdAt: -1 }).limit(100);
     socket.emit('callLogs', logs);
+  });
+
+  socket.on('deleteCallLog', async ({ logId }) => {
+    if (!socket.username) return;
+    const log = await CallLog.findById(logId);
+    if (!log || (log.caller !== socket.username && log.callee !== socket.username)) return;
+    await CallLog.findByIdAndUpdate(logId, { $addToSet: { hiddenFor: socket.username } });
+    socket.emit('callLogDeleted', { logId });
+  });
+
+  socket.on('deleteAllCallLogs', async () => {
+    if (!socket.username) return;
+    await CallLog.updateMany(
+      { $or: [{ caller: socket.username }, { callee: socket.username }] },
+      { $addToSet: { hiddenFor: socket.username } }
+    );
+    socket.emit('callLogsCleared');
   });
 
   socket.on('iceCandidate', ({ to, candidate }) => {

@@ -14,7 +14,7 @@ const upload = multer({ storage, limits: { fileSize: 3 * 1024 * 1024 } });
 
 // Get all registered users (roster — no passwords)
 router.get('/', async (req, res) => {
-  const users = await User.find({}, 'username displayName avatar status').lean();
+  const users = await User.find({}, 'username displayName avatar status lastSeen').lean();
   res.json(users);
 });
 

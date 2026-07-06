@@ -311,6 +311,10 @@ function Chat({ username, onLogout }) {
 
   // Mobile bottom-tab navigation
   const [searchDirQuery, setSearchDirQuery] = useState('');
+  const [contactSort, setContactSort] = useState('lastSeen'); // 'lastSeen' | 'name'
+  const [showSortMenu, setShowSortMenu] = useState(false);
+  const [callsFilter, setCallsFilter] = useState('all'); // 'all' | 'missed'
+  const [callsEditing, setCallsEditing] = useState(false);
 
   const statusColors = {
     online: '#34c759',
@@ -591,6 +595,12 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     socket.on('callLogs', (logs) => {
       setCallLogs(logs);
     });
+    socket.on('callLogDeleted', ({ logId }) => {
+      setCallLogs(prev => prev.filter(l => l._id !== logId));
+    });
+    socket.on('callLogsCleared', () => {
+      setCallLogs([]);
+    });
 
     return () => {
       socket.off('messagePinned');
@@ -633,6 +643,8 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
       socket.off('callFailed');
       socket.off('iceCandidate');
       socket.off('callLogs');
+      socket.off('callLogDeleted');
+      socket.off('callLogsCleared');
     };
   }, [username]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -641,6 +653,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
       if (!e.target.closest('.msg-menu-wrapper')) setActiveActionMenu('');
       if (!e.target.closest('.emoji-wrapper')) setShowPicker(false);
       if (!e.target.closest('.attach-wrapper')) setShowAttach(false);
+      if (!e.target.closest('.mobile-sort-wrapper')) setShowSortMenu(false);
     };
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
@@ -1407,6 +1420,62 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
+  const formatLastSeen = (date) => {
+    if (!date) return 'a while ago';
+    const diffMs = Date.now() - new Date(date).getTime();
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMins / 60);
+    const diffDays = Math.floor(diffHours / 24);
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return new Date(date).toLocaleDateString();
+  };
+
+  const inviteFriend = async () => {
+    const shareData = {
+      title: 'iChat',
+      text: 'Join me on iChat!',
+      url: window.location.origin
+    };
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        await navigator.clipboard.writeText(`${shareData.text} ${shareData.url}`);
+        alert('Invite link copied to clipboard!');
+      }
+    } catch {}
+  };
+
+  const deleteCallLog = (logId) => {
+    socket.emit('deleteCallLog', { logId });
+  };
+
+  const deleteAllCallLogs = () => {
+    socket.emit('deleteAllCallLogs');
+  };
+
+  const sortedContacts = allUsers
+    .filter(u => u.username !== username)
+    .slice()
+    .sort((a, b) => {
+      if (contactSort === 'name') {
+        return (a.displayName || a.username).localeCompare(b.displayName || b.username);
+      }
+      const aOnline = onlineUsers.includes(a.username);
+      const bOnline = onlineUsers.includes(b.username);
+      if (aOnline !== bOnline) return aOnline ? -1 : 1;
+      return new Date(b.lastSeen || 0) - new Date(a.lastSeen || 0);
+    });
+
+  const filteredCallLogs = callLogs.filter(log => {
+    if (callsFilter === 'all') return true;
+    const isOutgoing = log.caller === username;
+    return !isOutgoing && log.status !== 'answered';
+  });
+
   const currentMessages = activeDM ? (dmMessages[activeDM.dmId] || []) : messages;
 
   // The last message the current user sent in this DM that the other party has read
@@ -1691,11 +1760,51 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
         </div>
 
         <div className="contacts-page">
+          <div className="mobile-page-toolbar">
+            <div className="mobile-sort-wrapper">
+              <button className="mobile-toolbar-btn" onClick={() => setShowSortMenu(v => !v)}>
+                Sort
+              </button>
+              {showSortMenu && (
+                <div className="mobile-sort-menu">
+                  <button
+                    className={contactSort === 'lastSeen' ? 'active' : ''}
+                    onClick={() => { setContactSort('lastSeen'); setShowSortMenu(false); }}
+                  >
+                    {contactSort === 'lastSeen' && <i className="ti ti-check" aria-hidden="true" />}
+                    by Last Seen
+                  </button>
+                  <button
+                    className={contactSort === 'name' ? 'active' : ''}
+                    onClick={() => { setContactSort('name'); setShowSortMenu(false); }}
+                  >
+                    {contactSort === 'name' && <i className="ti ti-check" aria-hidden="true" />}
+                    by Name
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              className="mobile-toolbar-btn mobile-toolbar-btn-icon"
+              onClick={() => setMobileView('search')}
+              aria-label="Add contact"
+            >
+              <i className="ti ti-plus" aria-hidden="true" />
+            </button>
+          </div>
           <div className="contacts-list">
-            {allUsers.filter(u => u.username !== username).length === 0 ? (
+            <div className="contact-row invite-friend-row" onClick={inviteFriend}>
+              <div className="invite-friend-icon">
+                <i className="ti ti-user-plus" aria-hidden="true" />
+              </div>
+              <div className="contact-row-body">
+                <span className="contact-row-name invite-friend-text">Invite Friends</span>
+              </div>
+            </div>
+            {sortedContacts.length === 0 ? (
               <p className="mobile-page-empty">No contacts yet</p>
             ) : (
-              allUsers.filter(u => u.username !== username).map((u, i) => {
+              sortedContacts.map((u, i) => {
                 const isOnline = onlineUsers.includes(u.username);
                 return (
                   <div
@@ -1709,7 +1818,9 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                     </div>
                     <div className="contact-row-body">
                       <span className="contact-row-name">{u.displayName || u.username}</span>
-                      <span className="contact-row-username">@{u.username}</span>
+                      <span className="contact-row-username">
+                        {isOnline ? 'online' : `last seen ${formatLastSeen(u.lastSeen)}`}
+                      </span>
                     </div>
                   </div>
                 );
@@ -1719,11 +1830,36 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
         </div>
 
         <div className="calls-page">
+          <div className="mobile-page-toolbar">
+            <button
+              className="mobile-toolbar-btn"
+              onClick={() => setCallsEditing(v => !v)}
+            >
+              {callsEditing ? 'Done' : 'Edit'}
+            </button>
+            <div className="calls-filter-toggle">
+              <button
+                className={callsFilter === 'all' ? 'active' : ''}
+                onClick={() => setCallsFilter('all')}
+              >All</button>
+              <button
+                className={callsFilter === 'missed' ? 'active' : ''}
+                onClick={() => setCallsFilter('missed')}
+              >Missed</button>
+            </div>
+            {callsEditing ? (
+              <button className="mobile-toolbar-btn mobile-toolbar-btn-danger" onClick={deleteAllCallLogs}>
+                Delete All
+              </button>
+            ) : (
+              <span className="mobile-toolbar-spacer" />
+            )}
+          </div>
           <div className="calls-list">
-            {callLogs.length === 0 ? (
+            {filteredCallLogs.length === 0 ? (
               <p className="mobile-page-empty">No recent calls</p>
             ) : (
-              callLogs.map((log) => {
+              filteredCallLogs.map((log) => {
                 const isOutgoing = log.caller === username;
                 const otherUser = isOutgoing ? log.callee : log.caller;
                 const isMissed = !isOutgoing && log.status !== 'answered';
@@ -1738,8 +1874,17 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                   <div
                     key={log._id}
                     className="call-row"
-                    onClick={() => { openDM(otherUser); setMobileView('chat'); }}
+                    onClick={() => { if (!callsEditing) { openDM(otherUser); setMobileView('chat'); } }}
                   >
+                    {callsEditing && (
+                      <button
+                        className="call-row-delete"
+                        onClick={(e) => { e.stopPropagation(); deleteCallLog(log._id); }}
+                        aria-label="Delete call"
+                      >
+                        <i className="ti ti-minus" aria-hidden="true" />
+                      </button>
+                    )}
                     <Avatar username={otherUser} avatarUrl={getUserAvatar(otherUser)} size={44} />
                     <div className="call-row-body">
                       <span className={`call-row-name${isMissed ? ' call-row-missed' : ''}`}>
@@ -1754,18 +1899,20 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                       <span className="call-row-date">
                         {new Date(log.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}
                       </span>
-                      <button
-                        className="call-row-btn"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openDM(otherUser);
-                          setMobileView('chat');
-                          startCall(log.callType, otherUser);
-                        }}
-                        aria-label={`Call ${otherUser}`}
-                      >
-                        <i className={`ti ${log.callType === 'video' ? 'ti-video' : 'ti-phone'}`} aria-hidden="true" />
-                      </button>
+                      {!callsEditing && (
+                        <button
+                          className="call-row-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            openDM(otherUser);
+                            setMobileView('chat');
+                            startCall(log.callType, otherUser);
+                          }}
+                          aria-label={`Call ${otherUser}`}
+                        >
+                          <i className={`ti ${log.callType === 'video' ? 'ti-video' : 'ti-phone'}`} aria-hidden="true" />
+                        </button>
+                      )}
                     </div>
                   </div>
                 );

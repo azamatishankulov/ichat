@@ -1691,9 +1691,6 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
         </div>
 
         <div className="contacts-page">
-          <div className="mobile-page-header">
-            <h2>Contacts</h2>
-          </div>
           <div className="contacts-list">
             {allUsers.filter(u => u.username !== username).length === 0 ? (
               <p className="mobile-page-empty">No contacts yet</p>
@@ -1722,9 +1719,6 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
         </div>
 
         <div className="calls-page">
-          <div className="mobile-page-header">
-            <h2>Calls</h2>
-          </div>
           <div className="calls-list">
             {callLogs.length === 0 ? (
               <p className="mobile-page-empty">No recent calls</p>

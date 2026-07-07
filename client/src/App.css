@@ -3948,6 +3948,7 @@ body.dark .scheduled-item-text { color: #f5f5f7; }
     border-right: none;
     border-radius: 0;
     display: none;
+    flex-direction: column;
   }
 
   .messages-area {

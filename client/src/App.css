@@ -4405,3 +4405,19 @@ body.dark .scheduled-item-text { color: #f5f5f7; }
     padding: 12px 20px 6px;
   }
 }
+/* ---- New features ---- */
+.chat-notice{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 14px;background:#fff3cd;color:#5c4400;font-size:.85rem}
+.chat-notice button{background:none;border:0;cursor:pointer;color:inherit}
+.forwarded-label{font-size:.75rem;opacity:.7;font-style:italic;margin-bottom:2px}
+.load-older-btn{display:block;margin:8px auto;padding:6px 14px;border-radius:16px;border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;cursor:pointer}
+.around-banner{display:flex;justify-content:center;align-items:center;gap:10px;padding:6px;font-size:.8rem;background:rgba(100,100,255,.12)}
+.around-banner button{border:0;background:none;color:#4a5bd8;cursor:pointer;text-decoration:underline}
+.blocked-bar{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;background:rgba(220,60,60,.1);font-size:.9rem}
+.blocked-bar button{padding:6px 12px;border-radius:6px;border:0;background:#d33;color:#fff;cursor:pointer}
+.input-area.is-hidden{display:none}
+.search-scope{display:inline-flex;gap:4px;margin-left:8px}
+.search-scope button{padding:4px 10px;border-radius:12px;border:1px solid rgba(128,128,128,.4);background:transparent;color:inherit;cursor:pointer;font-size:.78rem}
+.search-scope button.active{background:#4a5bd8;color:#fff;border-color:#4a5bd8}
+.search-result-where{margin:0 8px;font-size:.75rem;opacity:.7}
+.muted-icon{margin-left:6px;font-size:.8rem;opacity:.6}
+.btn-active-danger{color:#d33}

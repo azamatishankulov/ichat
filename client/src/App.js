@@ -3,12 +3,25 @@ import './App.css';
 import Chat from './Chat';
 import SERVER_URL from './config';
 
+// Restore a still-valid session so a page refresh doesn't force a re-login.
+function savedSession() {
+  try {
+    const token = localStorage.getItem('token');
+    const name = localStorage.getItem('username');
+    if (!token || !name) return null;
+    const payload = JSON.parse(atob(token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')));
+    if (payload.exp && payload.exp * 1000 < Date.now()) return null;
+    return name;
+  } catch { return null; }
+}
+
 function App() {
-  const [screen, setScreen] = useState('login');
+  const [restored] = useState(savedSession);
+  const [screen, setScreen] = useState(restored ? 'chat' : 'login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
-  const [loggedInUser, setLoggedInUser] = useState('');
+  const [loggedInUser, setLoggedInUser] = useState(restored || '');
 
   const extractMessage = (data) => {
     if (data.errors && data.errors.length > 0) {

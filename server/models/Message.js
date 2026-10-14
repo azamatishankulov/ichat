@@ -101,10 +101,21 @@ fileType: {
     default: ''
   },
 
+  // Original author when this message was forwarded from somewhere else
+  forwardedFrom: {
+    type: String,
+    default: ''
+  },
+
   createdAt: {
     type: Date,
     default: Date.now
   }
 });
+
+// Speeds up loading history and searching
+messageSchema.index({ room: 1, createdAt: -1 });
+messageSchema.index({ dmId: 1, createdAt: -1 });
+messageSchema.index({ starredBy: 1 });
 
 module.exports = mongoose.model('Message', messageSchema);

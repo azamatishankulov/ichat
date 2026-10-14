@@ -11,7 +11,7 @@ const registerValidation = [
     .matches(/^[a-zA-Z0-9_]+$/).withMessage('Username may only contain letters, numbers, and underscores')
     .isLength({ min: 3, max: 30 }).withMessage('Username must be 3–30 characters'),
   body('password')
-    .isLength({ min: 6 }).withMessage('Password must be at least 6 characters')
+    .isLength({ min: 6, max: 128 }).withMessage('Password must be 6–128 characters')
 ];
 
 const loginValidation = [
@@ -25,12 +25,18 @@ router.post('/register', registerValidation, async (req, res) => {
   if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
   const { username, password } = req.body;
-  const existingUser = await User.findOne({ username });
-  if (existingUser) return res.json({ message: 'Username already taken' });
+  // Usernames are compared case-insensitively so "Alice" and "alice" can't both exist
+  const taken = await User.findOne({ username: new RegExp(`^${username}$`, 'i') }, '_id').lean();
+  if (taken) return res.status(409).json({ message: 'Username already taken' });
 
   const hashedPassword = await bcrypt.hash(password, 10);
-  const user = new User({ username, password: hashedPassword });
-  await user.save();
+  try {
+    await User.create({ username, password: hashedPassword });
+  } catch (err) {
+    // Two sign-ups racing for the same name: the unique index catches the loser
+    if (err.code === 11000) return res.status(409).json({ message: 'Username already taken' });
+    throw err;
+  }
   res.json({ message: 'Account created! You can now login.' });
 });
 
@@ -41,13 +47,12 @@ router.post('/login', loginValidation, async (req, res) => {
 
   const { username, password } = req.body;
   const user = await User.findOne({ username });
-  if (!user) return res.json({ message: 'User not found' });
-
-  const validPassword = await bcrypt.compare(password, user.password);
-  if (!validPassword) return res.json({ message: 'Wrong password' });
+  // Same message for "no such user" and "wrong password" so usernames can't be probed
+  const valid = user && await bcrypt.compare(password, user.password);
+  if (!valid) return res.status(401).json({ message: 'Invalid username or password' });
 
   const token = jwt.sign(
-    { username },
+    { username: user.username },
     process.env.JWT_SECRET,
     {
       expiresIn: '7d',
@@ -57,7 +62,7 @@ router.post('/login', loginValidation, async (req, res) => {
     }
   );
 
-  res.json({ token, username });
+  res.json({ token, username: user.username });
 });
 
 module.exports = router;

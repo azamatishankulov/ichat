@@ -1,12 +1,10 @@
 const express = require('express');
 const multer = require('multer');
-const path = require('path');
 const fs = require('fs');
-const crypto = require('crypto');
 const router = express.Router();
 const { requireAuth } = require('../middleware/auth');
 
-const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const { storage, imageUploader, detectMime, isRealImage } = require('../utils/uploads');
 
 const BLOCKED_MIME_PATTERNS = [
   'application/x-msdownload',
@@ -25,51 +23,24 @@ function isBlockedMime(mime) {
   return false;
 }
 
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, 'uploads/'),
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname).slice(1).toLowerCase();
-    cb(null, crypto.randomUUID() + (ext ? '.' + ext : ''));
-  }
-});
-
-const imageUpload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (req, file, cb) => {
-    if (!ALLOWED_IMAGE_TYPES.includes(file.mimetype)) {
-      return cb(new Error('Only JPEG, PNG, GIF, and WebP images are allowed'));
-    }
-    cb(null, true);
-  }
-});
+const imageUpload = imageUploader(5 * 1024 * 1024);
 
 const fileUpload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     if (isBlockedMime(file.mimetype)) {
-      return cb(new Error('File type not allowed'));
+      return cb(Object.assign(new Error('File type not allowed'), { status: 400 }));
     }
     cb(null, true);
   }
 });
 
-async function detectMime(filePath) {
-  try {
-    const { fileTypeFromFile } = await import('file-type');
-    return await fileTypeFromFile(filePath);
-  } catch {
-    return null;
-  }
-}
-
 // Image upload
 router.post('/image', requireAuth, imageUpload.single('image'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: 'No file uploaded' });
 
-  const detected = await detectMime(req.file.path);
-  if (!detected || !ALLOWED_IMAGE_TYPES.includes(detected.mime)) {
+  if (!(await isRealImage(req.file.path))) {
     fs.unlink(req.file.path, () => {});
     return res.status(400).json({ message: 'File content does not match a permitted image type' });
   }

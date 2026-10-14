@@ -1,10 +1,16 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import EmojiPicker from 'emoji-picker-react';
 import Profile from './Profile';
 import SERVER_URL from './config';
 
-const socket = io(SERVER_URL);
+// The socket connects after login and proves who you are with your login token.
+const socket = io(SERVER_URL, {
+  autoConnect: false,
+  auth: (cb) => cb({ token: localStorage.getItem('token') })
+});
+// "alice:bob" — same format the server uses (':' can't appear in a username)
+const dmIdFor = (a, b) => [a, b].sort().join(':');
 const DEFAULT_ROOMS = ['general', 'random', 'tech'];
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPod|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 const MOD_KEY = IS_MAC ? '⌘' : 'Ctrl+';
@@ -295,6 +301,34 @@ function Chat({ username, onLogout }) {
 
   const [mobileView, setMobileView] = useState('sidebar');
 
+  // Block / mute (stored on the server so they follow you across devices)
+  const [blockedUsers, setBlockedUsers] = useState([]);
+  const [mutedChats, setMutedChats] = useState([]);
+  const blockedRef = useRef([]);
+  const mutedRef = useRef([]);
+
+  // Rooms: who created each one, and a room we are waiting for the server to confirm
+  const [roomOwners, setRoomOwners] = useState({});
+  const pendingRoomRef = useRef('');
+
+  // Short messages from the server ("message could not be delivered", room errors...)
+  const [notice, setNotice] = useState('');
+  const noticeTimerRef = useRef(null);
+
+  // Paging: which chats still have older messages, and whether we are looking at an old slice
+  const [hasMoreOlder, setHasMoreOlder] = useState({});
+  const [viewingOld, setViewingOld] = useState(false);
+  const loadingOlderRef = useRef(false);
+  const scrollRestoreRef = useRef(null);
+  const skipAutoScrollRef = useRef(false);
+  const lastViewKeyRef = useRef('');
+
+  // Full-history search
+  const [searchScope, setSearchScope] = useState('chat'); // 'chat' | 'all'
+  const [searching, setSearching] = useState(false);
+  const searchTimerRef = useRef(null);
+  const searchQueryRef = useRef('');
+
   // Feature: WebRTC Calls
   const [incomingCall, setIncomingCall] = useState(null);
   const [activeCall, setActiveCall] = useState(null);
@@ -324,7 +358,18 @@ function Chat({ username, onLogout }) {
   };
 
   useEffect(() => {
-    socket.emit('join', username);
+    // (Re)join whenever we connect — also after a dropped connection — and restore the open chat.
+    const onConnect = () => {
+      socket.emit('join');
+      if (!activeDMRef.current && currentRoomRef.current !== 'general') {
+        socket.emit('joinRoom', currentRoomRef.current);
+      }
+      if (activeDMRef.current) socket.emit('openDM', { toUser: activeDMRef.current.toUser });
+    };
+    socket.on('connect', onConnect);
+    // An expired or invalid login token: go back to the login screen
+    socket.on('connect_error', (err) => { if (err && err.message === 'unauthorized') onLogout(); });
+    if (socket.connected) onConnect(); else socket.connect();
     requestNotificationPermission();
     loadStickers();
     fetch(`${SERVER_URL}/api/profile`)
@@ -334,12 +379,14 @@ function Chat({ username, onLogout }) {
         setAllUsers(users);
         const dmIds = users
           .filter(u => u.username !== username)
-          .map(u => [username, u.username].sort().join('_'));
+          .map(u => dmIdFor(username, u.username));
         if (dmIds.length > 0) socket.emit('getLastMessages', dmIds);
       })
       .catch(() => {});
     socket.on('previousMessages', (msgs) => {
       setMessages(msgs);
+      setViewingOld(false);
+      setHasMoreOlder(prev => ({ ...prev, [`room:${currentRoomRef.current}`]: msgs.length >= 50 }));
       if (pendingScrollRef.current) {
         const id = pendingScrollRef.current;
         pendingScrollRef.current = null;
@@ -353,13 +400,14 @@ function Chat({ username, onLogout }) {
         if (msg.username !== username) {
           socket.emit('markRoomRead', { room: msg.room, reader: username });
         }
-      } else if (msg.username !== username) {
+      } else if (msg.username !== username && !blockedRef.current.includes(msg.username)) {
         setUnreadCounts(prev => ({
           ...prev,
           [msg.room]: (prev[msg.room] || 0) + 1
         }));
       }
-      if (msg.username !== username && !(msg.mentions || []).includes(username)) {
+      const quiet = blockedRef.current.includes(msg.username) || mutedRef.current.includes(`room:${msg.room}`);
+      if (msg.username !== username && !quiet && !(msg.mentions || []).includes(username)) {
         sendNotification(`${msg.username}`, msg.text || (msg.stickerUrl ? '🎭 Sticker' : '📷 Image'));
         if (!isViewingRoom) playNotificationSound();
       }
@@ -377,7 +425,80 @@ function Chat({ username, onLogout }) {
       }));
     });
     socket.on('onlineUsers', (users) => setOnlineUsers(users));
-    socket.on('roomsList', (roomsList) => setRooms(roomsList));
+    socket.on('roomsList', (roomsList) => {
+      setRooms(roomsList);
+      // We just created a room: open it as soon as the server confirms it exists
+      if (pendingRoomRef.current && roomsList.includes(pendingRoomRef.current)) {
+        const name = pendingRoomRef.current;
+        pendingRoomRef.current = '';
+        joinRoom(name);
+      }
+    });
+    socket.on('roomOwners', (owners) => setRoomOwners(owners));
+    socket.on('roomError', ({ message: text }) => { pendingRoomRef.current = ''; showNotice(text); });
+    socket.on('roomDeleted', ({ room }) => {
+      setPinnedMessages(prev => { const n = { ...prev }; delete n[room]; return n; });
+      if (currentRoomRef.current === room && !activeDMRef.current) {
+        joinRoom('general');
+        showNotice(`#${room} was deleted.`);
+      }
+    });
+    socket.on('roomRenamed', ({ oldName, newName }) => {
+      if (currentRoomRef.current === oldName) {
+        currentRoomRef.current = newName;
+        setCurrentRoom(newName);
+      }
+      setUnreadCounts(prev => {
+        if (!(oldName in prev)) return prev;
+        const { [oldName]: count, ...rest } = prev;
+        return { ...rest, [newName]: count };
+      });
+      setPinnedMessages(prev => {
+        if (!(oldName in prev)) return prev;
+        const { [oldName]: pins, ...rest } = prev;
+        return { ...rest, [newName]: pins.map(m => ({ ...m, room: newName })) };
+      });
+    });
+    socket.on('userSettings', ({ blockedUsers: blocked, mutedChats: muted }) => {
+      blockedRef.current = blocked || [];
+      mutedRef.current = muted || [];
+      setBlockedUsers(blockedRef.current);
+      setMutedChats(mutedRef.current);
+    });
+    socket.on('dmBlocked', ({ message: text }) => showNotice(text));
+    socket.on('rateLimitError', ({ message: text }) => showNotice(text));
+    socket.on('searchResults', ({ query, results }) => {
+      // ignore answers to a search the user has already replaced
+      if (query !== searchQueryRef.current.trim()) return;
+      setSearching(false);
+      setSearchResults(results);
+    });
+    socket.on('olderMessages', ({ room, dmId, messages: older, hasMore }) => {
+      loadingOlderRef.current = false;
+      skipAutoScrollRef.current = true;
+      const key = dmId ? `dm:${dmId}` : `room:${room}`;
+      setHasMoreOlder(prev => ({ ...prev, [key]: hasMore }));
+      const el = messagesContainerRef.current;
+      scrollRestoreRef.current = el ? { height: el.scrollHeight, top: el.scrollTop } : null;
+      const prepend = (list) => {
+        const have = new Set(list.map(m => m._id));
+        return [...older.filter(m => !have.has(m._id)), ...list];
+      };
+      if (dmId) setDmMessages(prev => ({ ...prev, [dmId]: prepend(prev[dmId] || []) }));
+      else if (room === currentRoomRef.current) setMessages(prev => prepend(prev));
+    });
+    socket.on('messagesAround', ({ room, dmId, messages: around, targetId }) => {
+      const inView = dmId
+        ? activeDMRef.current && activeDMRef.current.dmId === dmId
+        : !activeDMRef.current && currentRoomRef.current === room;
+      if (!inView) return;
+      skipAutoScrollRef.current = true;
+      if (dmId) setDmMessages(prev => ({ ...prev, [dmId]: around }));
+      else setMessages(around);
+      setViewingOld(true);
+      setHasMoreOlder(prev => ({ ...prev, [dmId ? `dm:${dmId}` : `room:${room}`]: true }));
+      setTimeout(() => scrollToMessage(targetId, true), 250);
+    });
     socket.on('typing', (user) => setTypingUser(user));
     socket.on('stopTyping', () => setTypingUser(''));
     socket.on('dmTyping', ({ fromUser, dmId }) => {
@@ -409,6 +530,8 @@ function Chat({ username, onLogout }) {
     });
     socket.on('dmMessages', ({ dmId, messages: msgs }) => {
       setDmMessages(prev => ({ ...prev, [dmId]: msgs }));
+      setViewingOld(false);
+      setHasMoreOlder(prev => ({ ...prev, [`dm:${dmId}`]: msgs.length >= 50 }));
       if (msgs.length > 0) {
         const last = msgs[msgs.length - 1];
         setLastDMMessages(prev => ({
@@ -441,9 +564,11 @@ function Chat({ username, onLogout }) {
             ...prev,
             [msg.dmId]: (prev[msg.dmId] || 0) + 1
           }));
-          playNotificationSound();
+          if (!mutedRef.current.includes(`dm:${msg.dmId}`)) playNotificationSound();
         }
-        sendNotification(`💬 ${msg.username}`, msg.text || (msg.stickerUrl ? '🎭 Sticker' : '📷 Image'));
+        if (!mutedRef.current.includes(`dm:${msg.dmId}`)) {
+          sendNotification(`💬 ${msg.username}`, msg.text || (msg.stickerUrl ? '🎭 Sticker' : '📷 Image'));
+        }
       }
     });
     socket.on('dmRead', ({ dmId, reader }) => {
@@ -603,6 +728,19 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     });
 
     return () => {
+      socket.off('connect', onConnect);
+      socket.off('connect_error');
+      socket.off('roomOwners');
+      socket.off('roomError');
+      socket.off('roomDeleted');
+      socket.off('roomRenamed');
+      socket.off('userSettings');
+      socket.off('dmBlocked');
+      socket.off('rateLimitError');
+      socket.off('searchResults');
+      socket.off('olderMessages');
+      socket.off('messagesAround');
+      socket.disconnect();
       socket.off('messagePinned');
       socket.off('messageUnpinned');
       socket.off('message');
@@ -663,15 +801,41 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     document.body.classList.toggle('dark', darkMode);
   }, [darkMode]);
 
+  // Older messages were added above what you are reading: keep the screen where it was.
+  useLayoutEffect(() => {
+    const saved = scrollRestoreRef.current;
+    const el = messagesContainerRef.current;
+    if (saved && el) {
+      el.scrollTop = el.scrollHeight - saved.height + saved.top;
+      scrollRestoreRef.current = null;
+    }
+  }, [messages, dmMessages]);
+
   useEffect(() => {
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      prevMessageCount.current = messages.length;
+      return;
+    }
     if (messages.length > prevMessageCount.current) {
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
     prevMessageCount.current = messages.length;
   }, [messages]);
 
+  // In a DM, scroll down only when the newest message changes (not for reactions or edits).
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    const list = activeDM ? (dmMessages[activeDM.dmId] || []) : [];
+    const viewKey = `${activeDM ? activeDM.dmId : ''}:${list.length ? list[list.length - 1]._id : ''}`;
+    if (skipAutoScrollRef.current) {
+      skipAutoScrollRef.current = false;
+      lastViewKeyRef.current = viewKey;
+      return;
+    }
+    if (lastViewKeyRef.current !== viewKey) {
+      lastViewKeyRef.current = viewKey;
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [activeDM, dmMessages]);
 
   useEffect(() => {
@@ -681,7 +845,9 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
       const url = extractFirstUrl(msg.text);
       if (!url || fetchedUrlsRef.current.has(url)) return;
       fetchedUrlsRef.current.add(url);
-      fetch(`${SERVER_URL}/api/link-preview?url=${encodeURIComponent(url)}`)
+      fetch(`${SERVER_URL}/api/link-preview?url=${encodeURIComponent(url)}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
+      })
         .then(r => r.json())
         .then(data => setLinkPreviews(prev => ({ ...prev, [url]: data })))
         .catch(() => setLinkPreviews(prev => ({ ...prev, [url]: null })));
@@ -713,6 +879,20 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     }
   };
 
+  const showNotice = (text) => {
+    setNotice(text || '');
+    clearTimeout(noticeTimerRef.current);
+    if (text) noticeTimerRef.current = setTimeout(() => setNotice(''), 6000);
+  };
+
+  const chatKey = activeDM ? `dm:${activeDM.dmId}` : `room:${currentRoom}`;
+  const toggleChatMute = (key = chatKey) => {
+    socket.emit(mutedChats.includes(key) ? 'unmuteChat' : 'muteChat', { chat: key });
+  };
+  const toggleBlock = (user) => {
+    socket.emit(blockedUsers.includes(user) ? 'unblockUser' : 'blockUser', { username: user });
+  };
+
   const joinRoom = (room) => {
     setCurrentRoom(room);
     currentRoomRef.current = room;
@@ -729,7 +909,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
 
   const openDM = (toUser) => {
     if (toUser === username) return;
-    const dmId = [username, toUser].sort().join('_');
+    const dmId = dmIdFor(username, toUser);
     setActiveDM({ toUser, dmId });
     activeDMRef.current = { toUser, dmId };
     setDmTypingUser('');
@@ -743,8 +923,9 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
   const createRoom = () => {
     if (newRoomName.trim() === '') return;
     const roomName = newRoomName.toLowerCase().replace(/\s+/g, '-');
+    // Open it once the server confirms it exists (see the roomsList handler)
+    pendingRoomRef.current = roomName;
     socket.emit('createRoom', roomName);
-    joinRoom(roomName);
     setNewRoomName('');
     setShowNewRoom(false);
   };
@@ -763,7 +944,6 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     if (renameValue.trim() === '') return;
     const newName = renameValue.toLowerCase().replace(/\s+/g, '-');
     socket.emit('renameRoom', { oldName: renamingRoom, newName });
-    if (currentRoom === renamingRoom) setCurrentRoom(newName);
     setRenamingRoom('');
     setRenameValue('');
   };
@@ -1069,7 +1249,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
   const navigateToStarred = (msg) => {
     setShowStarred(false);
     if (msg.isDM) {
-      const otherUser = msg.dmId.split('_').find(u => u !== username);
+      const otherUser = msg.dmId.split(':').find(u => u !== username);
       if (activeDMRef.current && activeDMRef.current.dmId === msg.dmId) {
         scrollToMessage(msg._id);
       } else {
@@ -1086,19 +1266,35 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     }
   };
 
-  const handleSearch = (query) => {
-    setSearchQuery(query);
-    if (query.trim() === '') {
+  const runSearch = (query, scope) => {
+    searchQueryRef.current = query;
+    clearTimeout(searchTimerRef.current);
+    if (query.trim().length < 2) {
       setSearchResults([]);
+      setSearching(false);
       return;
     }
-    const results = messages.filter(msg =>
-      msg.text && msg.text.toLowerCase().includes(query.toLowerCase())
-    );
-    setSearchResults(results);
+    setSearching(true);
+    searchTimerRef.current = setTimeout(() => {
+      socket.emit('searchMessages', {
+        query: query.trim(),
+        scope,
+        ...(activeDMRef.current ? { dmId: activeDMRef.current.dmId } : { room: currentRoomRef.current })
+      });
+    }, 250);
   };
 
-  const scrollToMessage = (msgId) => {
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    runSearch(query, searchScope);
+  };
+
+  const changeSearchScope = (scope) => {
+    setSearchScope(scope);
+    runSearch(searchQuery, scope);
+  };
+
+  const scrollToMessage = (msgId, alreadyLoaded = false) => {
     setShowSearch(false);
     setSearchQuery('');
     setSearchResults([]);
@@ -1108,8 +1304,27 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
         el.classList.add('highlight-message');
         setTimeout(() => el.classList.remove('highlight-message'), 3000);
+      } else if (!alreadyLoaded && msgId) {
+        // Not on screen: it is an older message, so ask the server for the surrounding conversation
+        socket.emit('loadAround', { messageId: msgId });
       }
     }, 100);
+  };
+
+  const loadOlder = () => {
+    if (loadingOlderRef.current) return;
+    const list = activeDM ? (dmMessages[activeDM.dmId] || []) : messages;
+    if (list.length === 0) return;
+    loadingOlderRef.current = true;
+    setTimeout(() => { loadingOlderRef.current = false; }, 5000); // never get stuck
+    socket.emit('loadOlder', {
+      ...(activeDM ? { dmId: activeDM.dmId } : { room: currentRoom }),
+      before: list[0].createdAt
+    });
+  };
+
+  const backToLatest = () => {
+    if (activeDM) openDM(activeDM.toUser); else joinRoom(currentRoom);
   };
 
   const insertMention = (selectedUser) => {
@@ -1262,6 +1477,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
       fileSize: msg.fileSize || 0,
       fileType: msg.fileType || '',
       stickerUrl: msg.stickerUrl || '',
+      forwardedFrom: msg.forwardedFrom || msg.username,
     };
     if (destination.type === 'room') {
       socket.emit('message', { username, ...content, targetRoom: destination.room });
@@ -1476,7 +1692,9 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     return !isOutgoing && log.status !== 'answered';
   });
 
-  const currentMessages = activeDM ? (dmMessages[activeDM.dmId] || []) : messages;
+  const currentMessages = activeDM
+    ? (dmMessages[activeDM.dmId] || [])
+    : messages.filter(m => !blockedUsers.includes(m.username));
 
   // The last message the current user sent in this DM that the other party has read
   const lastSeenMsg = activeDM
@@ -1501,6 +1719,20 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
     ...currentMessages.map(m => ({ type: 'message', item: m, createdAt: m.createdAt })),
     ...currentPolls.map(p => ({ type: 'poll', item: p, createdAt: p.createdAt }))
   ].sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+
+  const copyMessageText = async (text) => {
+    try {
+      if (navigator.clipboard?.writeText) await navigator.clipboard.writeText(text);
+      else {
+        const ta = document.createElement('textarea');
+        ta.value = text; document.body.appendChild(ta); ta.select();
+        document.execCommand('copy'); document.body.removeChild(ta);
+      }
+      showNotice('Copied to clipboard');
+    } catch { showNotice('Could not copy'); }
+  };
+
+  const canManageRoom = (room) => !DEFAULT_ROOMS.includes(room) && roomOwners[room] === username;
 
   const currentPinned = activeDM
     ? (pinnedMessages[activeDM.dmId] || [])
@@ -1628,11 +1860,12 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                   <div className="room-item">
                     <div className="room-item-left" onClick={() => { joinRoom(room); setMobileView('chat'); }}>
                       <span><span className="room-hash">#</span>{room}</span>
+                      {mutedChats.includes(`room:${room}`) && <i className="ti ti-bell-off muted-icon" aria-label="Muted" />}
                       {unreadCounts[room] > 0 && (
                         <span className="unread-badge">{unreadCounts[room] > 99 ? '99+' : unreadCounts[room]}</span>
                       )}
                     </div>
-                    {!DEFAULT_ROOMS.includes(room) && (
+                    {canManageRoom(room) && (
                       <div className="room-actions">
                         <button onClick={() => startRename(room)}>✏️</button>
                         <button onClick={() => deleteRoom(room)}>🗑️</button>
@@ -1708,7 +1941,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
           )}
           <div className="dm-list">
             {allUsers.filter(u => u.username !== username).map((u, i) => {
-              const dmId = [username, u.username].sort().join('_');
+              const dmId = dmIdFor(username, u.username);
               const isOnline = onlineUsers.includes(u.username);
               const lastMsg = lastDMMessages[dmId] || null;
               return (
@@ -1724,6 +1957,8 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                   <div className="dm-card-body">
                     <div className="dm-card-top">
                       <span className="dm-card-name">{u.displayName || u.username}</span>
+                      {mutedChats.includes(`dm:${dmId}`) && <i className="ti ti-bell-off muted-icon" aria-label="Muted" />}
+                      {blockedUsers.includes(u.username) && <i className="ti ti-ban muted-icon" aria-label="Blocked" />}
                       {lastMsg && <span className="dm-card-time">{formatDMTime(lastMsg.createdAt)}</span>}
                     </div>
                     <div className="dm-card-bottom">
@@ -2014,7 +2249,7 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                       <div className="starred-item-meta">
                         <span className="starred-context">
                           {msg.isDM
-                            ? `💬 ${msg.dmId.split('_').find(u => u !== username) || msg.dmId}`
+                            ? `💬 ${msg.dmId.split(':').find(u => u !== username) || msg.dmId}`
                             : `# ${msg.room}`}
                         </span>
                         <span className="starred-time">
@@ -2090,13 +2325,14 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
   </div>
 ) : (
   <div
-    className="room-title-sub clickable"
+    className={canManageRoom(currentRoom) ? 'room-title-sub clickable' : 'room-title-sub'}
     onClick={() => {
+      if (!canManageRoom(currentRoom)) return;
       setEditingDescription(true);
       setDescriptionValue(roomDescriptions[currentRoom] || '');
     }}
   >
-    {roomDescriptions[currentRoom] || 'Add a description...'} · {onlineUsers.length} online
+    {roomDescriptions[currentRoom] || (canManageRoom(currentRoom) ? 'Add a description...' : 'No description')} · {onlineUsers.length} online
   </div>
 )}
             </div>
@@ -2118,6 +2354,30 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                     title="Video call"
                   >
                     <i className="ti ti-video" aria-hidden="true" />
+                  </button>
+                  <button
+                    className="search-toggle-btn"
+                    onClick={() => { setShowSearch(!showSearch); setSearchQuery(''); setSearchResults([]); }}
+                    aria-label="Search this conversation"
+                    title="Search"
+                  >
+                    <i className="ti ti-search" aria-hidden="true" />
+                  </button>
+                  <button
+                    className="search-toggle-btn"
+                    onClick={() => toggleChatMute()}
+                    aria-label={mutedChats.includes(chatKey) ? 'Unmute this conversation' : 'Mute this conversation'}
+                    title={mutedChats.includes(chatKey) ? 'Unmute conversation' : 'Mute conversation'}
+                  >
+                    <i className={`ti ${mutedChats.includes(chatKey) ? 'ti-bell-off' : 'ti-bell'}`} aria-hidden="true" />
+                  </button>
+                  <button
+                    className={`search-toggle-btn${blockedUsers.includes(activeDM.toUser) ? ' btn-active-danger' : ''}`}
+                    onClick={() => toggleBlock(activeDM.toUser)}
+                    aria-label={blockedUsers.includes(activeDM.toUser) ? `Unblock ${activeDM.toUser}` : `Block ${activeDM.toUser}`}
+                    title={blockedUsers.includes(activeDM.toUser) ? 'Unblock' : 'Block'}
+                  >
+                    <i className="ti ti-ban" aria-hidden="true" />
                   </button>
                 </>
               ) : (
@@ -2152,7 +2412,15 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                     aria-label={soundMuted ? 'Unmute notifications' : 'Mute notifications'}
                     title={soundMuted ? 'Unmute sounds' : 'Mute sounds'}
                   >
-                    <i className={`ti ${soundMuted ? 'ti-bell-off' : 'ti-bell'}`} aria-hidden="true"></i>
+                    <i className={`ti ${soundMuted ? 'ti-volume-off' : 'ti-volume'}`} aria-hidden="true"></i>
+                  </button>
+                  <button
+                    className="search-toggle-btn"
+                    onClick={() => toggleChatMute()}
+                    aria-label={mutedChats.includes(chatKey) ? 'Unmute this room' : 'Mute this room'}
+                    title={mutedChats.includes(chatKey) ? 'Unmute this room' : 'Mute this room'}
+                  >
+                    <i className={`ti ${mutedChats.includes(chatKey) ? 'ti-bell-off' : 'ti-bell'}`} aria-hidden="true"></i>
                   </button>
                 </>
               )}
@@ -2168,6 +2436,13 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
             </div>
           </div>
 
+          {notice && (
+            <div className="chat-notice" role="status">
+              <span>{notice}</span>
+              <button onClick={() => showNotice('')} aria-label="Dismiss">✕</button>
+            </div>
+          )}
+
           {showSearch && (
             <div className="search-bar">
               <i className="ti ti-search" aria-hidden="true"></i>
@@ -2179,23 +2454,39 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                 onChange={e => handleSearch(e.target.value)}
                 autoFocus
               />
-              {searchQuery && <span className="search-count">{searchResults.length} results</span>}
+              <div className="search-scope" role="group" aria-label="Search scope">
+                <button className={searchScope === 'chat' ? 'active' : ''} onClick={() => changeSearchScope('chat')}>
+                  {activeDM ? 'This chat' : 'This room'}
+                </button>
+                <button className={searchScope === 'all' ? 'active' : ''} onClick={() => changeSearchScope('all')}>Everywhere</button>
+              </div>
+              {searchQuery.trim().length >= 2 && (
+                <span className="search-count">{searching ? 'Searching…' : `${searchResults.length} results`}</span>
+              )}
             </div>
           )}
 
           {showSearch && searchQuery && (
             <div className="search-results">
-              {searchResults.length === 0 ? (
+              {searchQuery.trim().length < 2 ? (
+                <p className="no-search">Type at least 2 characters</p>
+              ) : searching ? (
+                <p className="no-search">Searching…</p>
+              ) : searchResults.length === 0 ? (
                 <p className="no-search">No messages found</p>
               ) : (
-                searchResults.map((msg, i) => (
+                searchResults.map((msg) => (
                   <div
-                    key={i}
+                    key={msg._id}
                     className="search-result-item"
-                    onClick={() => scrollToMessage(msg._id)}
+                    onClick={() => navigateToStarred(msg)}
                   >
                     <span className="search-result-user">{msg.username}</span>
+                    <span className="search-result-where">
+                      {msg.isDM ? `💬 ${msg.dmId.split(':').find(u => u !== username) || msg.dmId}` : `# ${msg.room}`}
+                    </span>
                     <span className="search-result-time">
+                      {new Date(msg.createdAt).toLocaleDateString([], { month: 'short', day: 'numeric' })}{' '}
                       {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </span>
                     <p className="search-result-text">{msg.text}</p>
@@ -2210,6 +2501,15 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
             ref={messagesContainerRef}
             onScroll={handleScroll}
           >
+            {viewingOld && (
+              <div className="around-banner">
+                You are viewing older messages.
+                <button onClick={backToLatest}>Jump to latest</button>
+              </div>
+            )}
+            {hasMoreOlder[chatKey] && combinedItems.length > 0 && (
+              <button className="load-older-btn" onClick={loadOlder}>Load earlier messages</button>
+            )}
             {combinedItems.length === 0 && (
               <p className="no-messages">
                 {activeDM ? `Start a conversation with ${activeDM.toUser}!` : 'No messages yet. Say hello! 👋'}
@@ -2264,6 +2564,11 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                 </div>
 
                 <div className="msg-content" onDoubleClick={() => handleDoubleClick(msg._id)}>
+                  {msg.forwardedFrom && (
+                    <div className="forwarded-label">
+                      <i className="ti ti-share" aria-hidden="true" /> Forwarded from {msg.forwardedFrom}
+                    </div>
+                  )}
                   {msg.replyTo && (
                     <div
                       className="reply-preview"
@@ -2456,6 +2761,15 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
                         <i className="ti ti-arrow-back-up" aria-hidden="true"></i>
                         <span>Reply</span>
                       </button>
+                      {msg.content && (
+                        <button
+                          className="msg-action-item"
+                          onClick={() => { copyMessageText(msg.content); setActiveActionMenu(''); }}
+                          aria-label="Copy message text"
+                        >
+                          <i className="ti ti-copy" aria-hidden="true" /> Copy text
+                        </button>
+                      )}
                       <button
                         className="msg-action-item"
                         onClick={() => { setForwardingMsg(msg); setActiveActionMenu(''); }}
@@ -2566,7 +2880,13 @@ socket.on('roomDescriptionUpdated', ({ room, description }) => {
             </div>
           )}
 
-          <div className="input-area">
+          {activeDM && blockedUsers.includes(activeDM.toUser) && (
+            <div className="blocked-bar">
+              <span>You blocked {activeDM.toUser}. They can't message you.</span>
+              <button onClick={() => toggleBlock(activeDM.toUser)}>Unblock</button>
+            </div>
+          )}
+          <div className={`input-area${activeDM && blockedUsers.includes(activeDM.toUser) ? ' is-hidden' : ''}`}>
             {/* Hidden file inputs */}
             <input
               type="file"
